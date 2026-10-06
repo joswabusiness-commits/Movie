@@ -82,7 +82,7 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <body class="viewer">
 <div id="modal" class="ov"><div class="card">
 <h1>🎬 SyncRoom</h1><p>Your private cinema. Watch in sync, share your screen, and chat live.</p>
-<div class="chips"><span>⚡ Real-time sync</span><span>🖥️ Screen share</span><span>📱 QR invite</span><span>👥 Live viewers</span></div>
+<div class="chips"><span>⚡ Real-time sync</span><span>🖥️ 4K 60FPS screen share</span><span>📱 QR invite</span><span>👥 Live viewers</span></div>
 <div id="hint" class="hide"></div>
 <input id="name" placeholder="Your display name" maxlength="20">
 <button class="btn" id="create">👑 Create Room (be the Host)</button>
@@ -134,15 +134,17 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-// ====== PASTE YOUR FIREBASE CONFIG HERE ======
+// ====== YOUR FIREBASE CONFIG ======
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAd2SWwtEBQj1dS2U5WCbo1RNuyWR_E6FU",
+  authDomain: "movie-88d8e.firebaseapp.com",
+  databaseURL: "https://movie-88d8e-default-rtdb.firebaseio.com",
+  projectId: "movie-88d8e",
+  storageBucket: "movie-88d8e.firebasestorage.app",
+  messagingSenderId: "158059059936",
+  appId: "1:158059059936:web:a5ba7be1293899bb618e85"
 };
-// =============================================
+// ==================================
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database(), TS = firebase.database.ServerValue.TIMESTAMP;
 const $ = id => document.getElementById(id);
@@ -165,7 +167,7 @@ function av(n) {
   d.style.background = 'linear-gradient(135deg,hsl(' + hue(n) + ' 80% 60%),hsl(' + (hue(n) + 50) % 360 + ' 80% 45%))'; return d;
 }
 const copy = (t, m) => (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast(m), () => prompt('Copy this:', t));
-function quiet(fn) { // run a local player action without echoing it to the room
+function quiet(fn) {
   applying = true; try { fn(); } catch (e) {}
   clearTimeout(applyTimer); applyTimer = setTimeout(() => { applying = false; lastT = player ? player.time() : 0; }, 1000);
 }
@@ -180,7 +182,7 @@ async function enter(id, creating) {
   if (!name) { $('err').textContent = 'Please enter your name.'; return; }
   id = id.trim().toUpperCase();
   if (!/^[A-Z0-9]{4,12}$/.test(id)) { $('err').textContent = 'Enter a valid Room ID.'; return; }
-  if (!creating) { // joining requires an existing room
+  if (!creating) {
     try {
       const s = await Promise.race([db.ref('rooms/' + id + '/host').once('value'), new Promise((_, r) => setTimeout(r, 8000))]);
       if (!s.val()) { $('err').textContent = 'Room not found. Check the ID or ask the host for the link.'; return; }
@@ -280,7 +282,7 @@ function start(creating) {
   ref('want').on('child_added', s => wantConn(s.key)); ref('want').on('child_changed', s => wantConn(s.key));
   loadYTApi();
   setInterval(pollYT, 500);
-  setInterval(() => { // host heartbeat keeps everyone's time aligned without spamming
+  setInterval(() => {
     if (isHost && player && !applying && !screenOn && player.playing())
       ref('videoState').set({currentTime: player.time(), isPlaying: true, timestamp: TS, by: me, hb: true});
   }, 4000);
@@ -319,7 +321,7 @@ $('form').onsubmit = e => {
   $('msg').value = '';
 };
 
-// ---------- Video source (host controls) ----------
+// ---------- Video source ----------
 function parse(u) {
   const m = u.match(/(?:youtu\.be\/|v=|embed\/|shorts\/|live\/)([\w-]{11})/);
   return m ? {type: 'yt', id: m[1], url: u} : {type: 'mp4', url: u};
@@ -377,7 +379,7 @@ function loadSource(src) {
     });
   }
 }
-function pollYT() { // YouTube has no seek event, so the host detects time jumps
+function pollYT() {
   if (!player || !player.yt || !isHost) return;
   const t = player.time();
   if (applying) { lastT = t; return; }
@@ -393,7 +395,7 @@ function apply(s, force) {
   quiet(() => { if (seek) player.seek(t); s.isPlaying ? player.play() : player.pause(); });
 }
 
-// ---------- Screen share (WebRTC, host -> each viewer, signaling via Firebase) ----------
+// ---------- Screen share (WebRTC 4K 60FPS) ----------
 function onScreen(v) {
   screenOn = !!v; const mine = !!v && v.by === me;
   $('scr').classList.toggle('hide', !v); $('player').classList.toggle('hide', !!v);
@@ -401,7 +403,7 @@ function onScreen(v) {
   const m = $('smsg');
   if (v) {
     m.classList.remove('hide');
-    m.textContent = mine ? '🖥️ You are sharing your screen. Viewers can see it live.' : '🖥️ Connecting to ' + (v.name || 'the host') + '\'s screen…';
+    m.textContent = mine ? '🖥️ You are sharing your screen in 4K 60FPS.' : '🖥️ Connecting to ' + (v.name || 'the host') + '\'s screen…';
     if (!mine) quiet(() => player && player.pause());
   } else {
     $('sv').srcObject = null; if (vpc) { vpc.close(); vpc = null; }
@@ -412,7 +414,14 @@ $('shareScr').onclick = () => stream ? stopShare() : startShare();
 async function startShare() {
   if (!isHost) return;
   try {
-    stream = await navigator.mediaDevices.getDisplayMedia({video: {frameRate: {ideal: 30, max: 30}, width: {max: 1920}, height: {max: 1080}}, audio: true});
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        width: { ideal: 3840, max: 3840 },
+        height: { ideal: 2160, max: 2160 },
+        frameRate: { ideal: 60, max: 60 }
+      },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
   } catch (e) { stream = null; return toast('Screen share cancelled'); }
   const vt = stream.getVideoTracks()[0]; vt.contentHint = 'motion'; vt.onended = () => stopShare();
   await ref('rtc').remove();
@@ -454,9 +463,15 @@ async function connectViewer(id) {
   };
   try {
     const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
-    pc.getSenders().forEach(s => { // cap bitrate to keep the stream smooth
+    pc.getSenders().forEach(s => {
       if (!s.track || s.track.kind !== 'video') return;
-      try { const p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}]; p.encodings[0].maxBitrate = 2500000; p.encodings[0].maxFramerate = 30; s.setParameters(p).catch(() => {}); } catch (e) {}
+      try {
+        const p = s.getParameters();
+        if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+        p.encodings[0].maxBitrate = 20000000; // 20 Mbps for crystal clear 4K 60FPS
+        p.encodings[0].maxFramerate = 60;
+        s.setParameters(p).catch(() => {});
+      } catch (e) {}
     });
     await ref('rtc/' + id).set({offer: {type: offer.type, sdp: offer.sdp}});
     ready = true; q.forEach(sendC); q = [];
