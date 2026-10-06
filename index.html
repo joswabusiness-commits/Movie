@@ -178,7 +178,7 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <button class="btn sm hide" id="unmute" type="button">🔊 Tap to unmute</button>
 <button id="fsin" type="button">Fullscreen</button></div></div>
 <div class="bar">
-<div class="src hostonly"><input id="url" placeholder="Paste a YouTube or direct .mp4 link…"><button class="btn sm" id="load">Load video</button><button class="btn sm alt" id="unload">Remove video</button></div>
+<div class="src hostonly"><input id="url" placeholder="Paste a YouTube, .mp4 or .m3u8 (HLS) link…"><button class="btn sm" id="load">Load video</button><button class="btn sm alt" id="unload">Remove video</button></div>
 <div class="q hostonly" id="qbox">
 <label>Size <select id="res"><option value="0" selected>Best (native)</option><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label>
 <label>FPS <select id="fps"><option value="30">30</option><option value="60" selected>60</option></select></label>
@@ -204,6 +204,7 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 const firebaseConfig = {
@@ -223,7 +224,7 @@ const ICE = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:s
 const me = sessionStorage.sr_uid || (sessionStorage.sr_uid = Math.random().toString(36).slice(2, 10));
 let room, name, offset = 0, player = null, curUrl = null, latest = null, applying = false, applyTimer = 0, lastT = 0,
     pendingYT = null, ytApi = false, ytObj = null, tab = 'list', unread = 0, viewers = [], host = null, isHost = false,
-    joinedAt = 0, screenOn = false, stream = null, pcs = {}, vpc = null, lastVol = 100;
+    joinedAt = 0, screenOn = false, stream = null, pcs = {}, vpc = null, lastVol = 100, hlsObj = null;
 const now = () => Date.now() + offset;
 const fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
 const toast = t => { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 2400); };
@@ -486,6 +487,7 @@ $('form').onsubmit = e => {
 
 // ---------- Video source (played natively by every viewer: never re-encoded) ----------
 function parse(u) {
+  if (/\.m3u8(\?|#|$)/i.test(u)) return {type: 'hls', url: u};
   const m = u.match(/(?:youtu\.be\/|v=|embed\/|shorts\/|live\/)([\w-]{11})/);
   return m ? {type: 'yt', id: m[1], url: u} : {type: 'mp4', url: u};
 }
@@ -506,6 +508,7 @@ $('unload').onclick = () => {
 };
 function clearSource() {
   curUrl = null; player = null; ytObj = null; latest = null;
+  if (hlsObj) { hlsObj.destroy(); hlsObj = null; }
   if (!screenOn) $('player').innerHTML = PH; else $('player').innerHTML = '';
 }
 $('sync').onclick = () => {
@@ -524,16 +527,22 @@ function push(playing, msg) {
 }
 function loadSource(src) {
   curUrl = src.url; player = null; ytObj = null;
+  if (hlsObj) { hlsObj.destroy(); hlsObj = null; }
   const box = $('player'); box.innerHTML = '';
-  if (src.type === 'mp4') {
+  if (src.type !== 'yt') {
     const v = document.createElement('video');
-    v.controls = true; v.playsInline = true; v.preload = 'auto'; v.src = src.url;
+    v.controls = true; v.playsInline = true; v.preload = 'auto';
+    if (src.type === 'hls' && window.Hls && Hls.isSupported()) {
+      hlsObj = new Hls({maxBufferLength: 30});
+      hlsObj.on(Hls.Events.ERROR, (e, d) => { if (d.fatal) toast('Stream error: ' + d.details); });
+      hlsObj.loadSource(src.url); hlsObj.attachMedia(v);
+    } else v.src = src.url;
     box.appendChild(v);
     v.onplay = () => push(true, 'played the video');
     v.onpause = () => push(false, 'paused the video');
     v.onseeked = () => push(!v.paused, 'jumped to ' + fmt(v.currentTime));
     v.onloadedmetadata = () => {
-      player = {play: () => v.play().catch(() => toast('Click the video to start playback')), pause: () => v.pause(), seek: t => v.currentTime = t, time: () => v.currentTime, playing: () => !v.paused, yt: false};
+      player = {play: () => v.play().catch(() => toast('Click the video to start playback')), pause: () => v.pause(), seek: t => v.currentTime = t, time: () => v.currentTime, playing: () => !v.paused, live: () => !isFinite(v.duration), yt: false};
       applyVol(); apply(latest, true);
     };
     v.onerror = () => toast('Could not load this video URL');
@@ -569,7 +578,7 @@ function pollYT() {
 function apply(s, force) {
   if (!player || !s || screenOn || (s.by === me && !force)) return;
   const t = s.currentTime + (s.isPlaying ? Math.max(0, (now() - s.timestamp) / 1000) : 0);
-  const seek = Math.abs(player.time() - t) > (s.hb && !force ? 1.5 : 0.8);
+  const seek = !(player.live && player.live()) && Math.abs(player.time() - t) > (s.hb && !force ? 1.5 : 0.8);
   if (!seek && player.playing() === !!s.isPlaying) return;
   quiet(() => { if (seek) player.seek(t); s.isPlaying ? player.play() : player.pause(); });
 }
