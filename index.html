@@ -21,8 +21,9 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px #6366f144}
 .logo{font-weight:800;font-size:19px;letter-spacing:-.5px;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent}
 .badge{background:#0f172acc;border:1px dashed var(--accent);color:#c7d2fe;padding:6px 13px;border-radius:999px;font:700 13px ui-monospace,monospace;letter-spacing:3px;cursor:pointer}
 .badge:hover{background:var(--accent);color:#fff}
-.role{font-size:12px;font-weight:800;letter-spacing:1px;padding:5px 11px;border-radius:999px}
-.role.h{background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b66}.role.v{background:#38bdf822;color:#7dd3fc;border:1px solid #38bdf866}
+.role{font-size:12px;font-weight:800;letter-spacing:1px;padding:5px 11px;border-radius:999px;cursor:pointer;user-select:none;transition:transform .15s,filter .15s}
+.role:hover{transform:scale(1.05);filter:brightness(1.1)}
+.role.h{background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b66;cursor:default}.role.v{background:#38bdf822;color:#7dd3fc;border:1px solid #38bdf866}
 .sp{flex:1}
 .live{display:flex;align-items:center;gap:10px;background:#0f172acc;padding:5px 14px 5px 6px;border-radius:999px;border:1px solid #ffffff14}
 .stack{display:flex}.stack .av{margin-left:-9px;border:2px solid var(--bg)}.stack .av:first-child{margin-left:0}
@@ -72,7 +73,7 @@ aside{background:#1e293bf2;display:flex;flex-direction:column;border-left:1px so
 .code{font:800 30px ui-monospace,monospace;letter-spacing:8px;text-align:center;color:#c7d2fe}
 #toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,20px);background:linear-gradient(135deg,var(--accent),var(--accent2));padding:10px 20px;border-radius:999px;opacity:0;transition:.3s;pointer-events:none;z-index:20;font-weight:600}
 #toast.show{opacity:1;transform:translate(-50%,0)}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:var(--panel2);border-radius:9px}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:var(--panel2);border-radius:999px}
 @media(max-width:860px){
 body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:auto;min-height:100dvh}
 .top{padding:10px 12px;gap:8px}.sp{display:none}main{padding:10px;flex:none}
@@ -116,7 +117,7 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <div class="bar">
 <div class="src hostonly"><input id="url" placeholder="Paste YouTube or direct .mp4 URL…"><button class="btn sm" id="load">▶ Load</button></div>
 <button class="btn sm alt hostonly" id="shareScr">🖥️ Share Screen</button>
-<span class="note vonly">👁 The host controls the video and screen.</span>
+<span class="note vonly">👁 The host controls the video and screen. Click "👁 VIEWER" above to become host.</span>
 <button class="btn sm alt" id="sync" title="Jump to the room's current position">🔄 Resync</button>
 <div class="react" id="react"><button>❤️</button><button>😂</button><button>😮</button><button>👏</button><button>🔥</button></div>
 </div>
@@ -204,6 +205,17 @@ $('rid').onkeydown = $('name').onkeydown = e => { if (e.key === 'Enter') ($('rid
 $('code').onclick = () => copy(room, 'Room code copied!');
 $('fs').onclick = () => { const s = $('stage'); document.fullscreenElement ? document.exitFullscreen() : (s.requestFullscreen || s.webkitRequestFullscreen).call(s); };
 
+// ---------- Role Click Handler (Become Host) ----------
+async function claimHost() {
+  if (isHost) return;
+  if (!confirm('Do you want to become the Host of this room?')) return;
+  await ref('screen').remove(); await ref('rtc').remove();
+  await ref('host').set({id: me, name});
+  sys(name + ' is now the host');
+}
+$('role').onclick = claimHost;
+$('claim').onclick = claimHost;
+
 // ---------- Invite / QR ----------
 $('invite').onclick = () => {
   const l = link(); $('invlink').value = l; $('invcode').textContent = room;
@@ -231,7 +243,9 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
 // ---------- Room start ----------
 function setRole() {
   document.body.classList.toggle('viewer', !isHost);
-  $('role').textContent = isHost ? '👑 HOST' : '👁 VIEWER'; $('role').className = 'role ' + (isHost ? 'h' : 'v');
+  $('role').textContent = isHost ? '👑 HOST' : '👁 VIEWER';
+  $('role').className = 'role ' + (isHost ? 'h' : 'v');
+  $('role').title = isHost ? 'You are the Host' : 'Click to become Host';
 }
 function start(creating) {
   joinedAt = now();
@@ -309,11 +323,6 @@ function renderViewers() {
   const hostHere = host && viewers.some(v => v.id === host.id), meHere = viewers.some(v => v.id === me);
   $('claim').classList.toggle('hide', !(host && !isHost && !hostHere && meHere));
 }
-$('claim').onclick = async () => {
-  if (!confirm('The host seems to be offline. Become the new host?')) return;
-  await ref('screen').remove(); await ref('rtc').remove();
-  await ref('host').set({id: me, name}); sys(name + ' is now the host');
-};
 $('react').onclick = e => {
   if (e.target.tagName !== 'BUTTON' || !room) return;
   const r = ref('reactions').push({e: e.target.textContent, by: me, t: TS});
@@ -473,7 +482,7 @@ async function connectViewer(id) {
       try {
         const p = s.getParameters();
         if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = 20000000; // 20 Mbps for crystal clear 4K 60FPS
+        p.encodings[0].maxBitrate = 20000000;
         p.encodings[0].maxFramerate = 60;
         s.setParameters(p).catch(() => {});
       } catch (e) {}
