@@ -149,7 +149,7 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <div class="bar">
 <div class="src hostonly"><input id="url" placeholder="Paste a YouTube or direct .mp4 link…"><button class="btn sm" id="load">Load video</button></div>
 <div class="q hostonly" id="qbox">
-<label>Size <select id="res"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label>
+<label>Size <select id="res"><option value="0" selected>Best (native)</option><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label>
 <label>FPS <select id="fps"><option value="30">30</option><option value="60" selected>60</option><option value="90">90</option><option value="120">120</option></select></label>
 <label>Focus <select id="hint2"><option value="motion">Smooth (movies)</option><option value="detail">Sharp (text)</option></select></label>
 <button class="btn sm alt" id="shareScr">Share screen</button>
@@ -492,12 +492,12 @@ function apply(s, force) {
 }
 
 // ---------- Screen share quality ----------
-const RES = {720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160]};
-const BR = {720: 5e6, 1080: 10e6, 1440: 18e6, 2160: 32e6};
+const RES = {0: [3840, 2160], 720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160]};
+const BR = {0: 30e6, 720: 8e6, 1080: 16e6, 1440: 28e6, 2160: 45e6};
 const FPSX = {30: 1, 60: 1.5, 90: 1.8, 120: 2};
 ['res', 'fps', 'hint2'].forEach(k => { const v = localStorage.getItem('sr_' + k); if (v && $(k).querySelector('[value="' + v + '"]')) $(k).value = v; });
 const Q = () => ({h: +$('res').value, fps: +$('fps').value, hint: $('hint2').value});
-const label = () => { const q = Q(); return (q.h === 2160 ? '4K' : q.h + 'p') + ' @ ' + q.fps + ' FPS'; };
+const label = () => { const q = Q(); return (q.h === 0 ? 'Native' : q.h === 2160 ? '4K' : q.h + 'p') + ' @ ' + q.fps + ' FPS'; };
 function smsg(title, sub, live) {
   const m = $('smsg'); m.innerHTML = '';
   const w = document.createElement('div'); w.className = 'sm';
@@ -514,7 +514,7 @@ function tune(pc) {
       const p = s.getParameters();
       if (!p.encodings || !p.encodings.length) p.encodings = [{}];
       p.encodings[0].maxBitrate = Math.min(50e6, BR[q.h] * FPSX[q.fps]);
-      p.encodings[0].maxFramerate = q.fps;
+      p.encodings[0].maxFramerate = q.fps; p.encodings[0].priority = 'high'; p.encodings[0].networkPriority = 'high';
       p.encodings[0].scaleResolutionDownBy = 1;
       p.degradationPreference = q.hint === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
       s.setParameters(p).catch(() => {});
@@ -568,10 +568,10 @@ async function startShare() {
   $('shareScr').textContent = 'Stop sharing'; $('shareScr').classList.add('red');
   const st = vt.getSettings();
   if (st.height && st.height < RES[q.h][1] * 0.9) toast('Browser gave ' + st.width + 'x' + st.height + ' (your screen is smaller)');
-  syncPcs();
+  syncPcs(); statsLoop();
 }
 function stopShare(silent) {
-  const was = !!stream;
+  const was = !!stream; clearInterval(stT);
   if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
   Object.keys(pcs).forEach(id => dropPc(id));
   $('shareScr').textContent = 'Share screen'; $('shareScr').classList.remove('red');
@@ -588,11 +588,41 @@ function dropPc(id, rm) {
   if (x) { x.offs.forEach(r => r.off()); try { x.pc.close(); } catch (e) {} delete pcs[id]; }
   if (rm) ref('rtc/' + id).remove();
 }
+function boost(sdp) {
+  try {
+    const q = Q(), mx = Math.round(Math.min(50e6, BR[q.h] * FPSX[q.fps]) / 1000), ex = 'x-google-min-bitrate=' + Math.round(mx / 4) + ';x-google-start-bitrate=' + Math.round(mx / 2) + ';x-google-max-bitrate=' + mx;
+    return sdp.split(/(?=^m=)/m).map(x => {
+      if (/^m=audio/.test(x)) return x.replace(/(a=fmtp:\d+ [^\r\n]*minptime=10[^\r\n]*)/g, '$1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000');
+      if (/^m=video/.test(x)) return x.replace(/(a=fmtp:\d+ [^\r\n]*)/g, (m, a) => /apt=/.test(a) ? m : a + ';' + ex);
+      return x;
+    }).join('');
+  } catch (e) { return sdp; }
+}
+let stT = 0, lastB = 0, lastTs = 0;
+function statsLoop() {
+  clearInterval(stT); lastTs = 0;
+  stT = setInterval(async () => {
+    const x = Object.values(pcs)[0]; if (!x || !stream || $('sv').srcObject) return;
+    try {
+      (await x.pc.getStats()).forEach(r => {
+        if (r.type !== 'outbound-rtp' || r.kind !== 'video') return;
+        const dt = (r.timestamp - lastTs) / 1000, mb = lastTs ? ((r.bytesSent - lastB) * 8 / dt / 1e6).toFixed(1) : '…';
+        lastB = r.bytesSent; lastTs = r.timestamp;
+        const lim = r.qualityLimitationReason && r.qualityLimitationReason !== 'none' ? ' · limited by ' + r.qualityLimitationReason : '';
+        smsg('You are sharing your screen', (r.frameWidth || '?') + '×' + (r.frameHeight || '?') + ' @ ' + Math.round(r.framesPerSecond || 0) + ' FPS · ' + mb + ' Mbps' + lim, true);
+      });
+    } catch (e) {}
+  }, 2000);
+}
 async function connectViewer(id) {
   if (!stream) return;
   dropPc(id);
   const pc = new RTCPeerConnection(ICE), offs = []; pcs[id] = {pc, offs};
   stream.getTracks().forEach(t => pc.addTrack(t, stream));
+  try {
+    const rank = c => ({'video/VP9': 0, 'video/H264': 1, 'video/VP8': 2, 'video/AV1': 3}[c.mimeType] ?? 4);
+    pc.getTransceivers().forEach(t => { if (t.sender.track && t.sender.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences([...RTCRtpSender.getCapabilities('video').codecs].sort((a, b) => rank(a) - rank(b))); });
+  } catch (e) {}
   let ready = false, q = [];
   const sendC = c => ref('rtc/' + id + '/h').push(c);
   pc.onicecandidate = e => { if (!e.candidate) return; const c = e.candidate.toJSON(); ready ? sendC(c) : q.push(c); };
@@ -600,14 +630,14 @@ async function connectViewer(id) {
     if (pc.connectionState === 'failed') setTimeout(() => { if (stream && pcs[id] && pcs[id].pc === pc) connectViewer(id); }, 1500);
   };
   try {
-    const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+    const o0 = await pc.createOffer(), offer = {type: o0.type, sdp: boost(o0.sdp)}; await pc.setLocalDescription(offer);
     tune(pc);
     await ref('rtc/' + id).set({offer: {type: offer.type, sdp: offer.sdp}});
     ready = true; q.forEach(sendC); q = [];
     const ar = ref('rtc/' + id + '/answer'); offs.push(ar);
     ar.on('value', async s => {
       const a = s.val(); if (!a || pc.signalingState !== 'have-local-offer') return;
-      try { await pc.setRemoteDescription(a); } catch (e) { return; }
+      try { await pc.setRemoteDescription({type: a.type, sdp: boost(a.sdp)}); } catch (e) { return; }
       tune(pc);
       const vr = ref('rtc/' + id + '/v'); offs.push(vr);
       vr.on('child_added', c => pc.addIceCandidate(c.val()).catch(() => {}));
@@ -629,7 +659,7 @@ function viewerRtc() {
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' && vpc === pc) ref('want/' + me).set(TS); };
     try {
       await pc.setRemoteDescription(o);
-      const a = await pc.createAnswer(); await pc.setLocalDescription(a);
+      const a0 = await pc.createAnswer(), a = {type: a0.type, sdp: boost(a0.sdp)}; await pc.setLocalDescription(a);
       await ref('rtc/' + me + '/answer').set({type: a.type, sdp: a.sdp});
       ref('rtc/' + me + '/h').on('child_added', c => pc.addIceCandidate(c.val()).catch(() => {}));
     } catch (e) {}
