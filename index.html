@@ -102,13 +102,13 @@ aside{background:var(--card);display:flex;flex-direction:column;border-left:4px 
 #toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,20px) rotate(-1deg);background:var(--inv);color:var(--invt);border:3px solid var(--ink);padding:6px 20px;border-radius:999px;opacity:0;transition:.3s;pointer-events:none;z-index:99}
 #toast.show{opacity:1;transform:translate(-50%,0) rotate(-1deg)}
 ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:var(--ink);border-radius:999px}
-/* ---- new: volume ---- */
+/* ---- volume ---- */
 .vol{display:flex;align-items:center;gap:6px;font-weight:800}
 .vol input[type=range]{width:110px;padding:0;border:0;background:none;accent-color:var(--ink);cursor:pointer}
 .vol input:focus{box-shadow:none}
 #volIcon{cursor:pointer;font-size:20px;user-select:none}
 #unmute{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:5}
-/* ---- new: chat reply + reactions ---- */
+/* ---- chat reply + reactions ---- */
 .msg .rq{border-left:4px solid currentColor;padding:0 8px;margin-bottom:4px;font-size:13px;opacity:.75}
 .msg .acts{position:absolute;top:-15px;right:6px;display:none;gap:2px;background:var(--card);border:2px solid var(--ink);border-radius:999px;padding:0 5px;z-index:2}
 .msg.me .acts{right:auto;left:6px}
@@ -119,7 +119,7 @@ aside{background:var(--card);display:flex;flex-direction:column;border-left:4px 
 .rx.mine{background:var(--inv);color:var(--invt)}
 #rbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:3px dashed var(--ink);font-size:13px}
 #rbar span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut)}
-/* ---- new: drawing ---- */
+/* ---- drawing ---- */
 #ink{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;touch-action:none}
 #ink.on{pointer-events:auto;cursor:crosshair}
 #inkbar{position:absolute;top:8px;left:8px;z-index:6;display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:75%}
@@ -202,7 +202,7 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-// ====== YOUR FIREBASE CONFIG ======
+// ====== FIREBASE CONFIG ======
 const firebaseConfig = {
   apiKey: "AIzaSyAd2SWwtEBQj1dS2U5WCbo1RNuyWR_E6FU",
   authDomain: "movie-88d8e.firebaseapp.com",
@@ -214,12 +214,9 @@ const firebaseConfig = {
 };
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database(), TS = firebase.database.ServerValue.TIMESTAMP;
-// ==================================
 
-// ====== OPTIONAL TURN SERVER (fixes black screen for viewers on phones / strict networks) ======
-// Get free credentials at metered.ca (or Cloudflare Calls), then fill these in.
+// TURN Server configuration fallback
 const TURN = {urls: ['turn:YOUR_TURN_HOST:443', 'turn:YOUR_TURN_HOST:443?transport=tcp'], username: '', credential: ''};
-// ===============================================================================================
 
 const $ = id => document.getElementById(id);
 const ICE = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}]};
@@ -229,6 +226,7 @@ let room, name, offset = 0, player = null, curUrl = null, latest = null, applyin
     pendingYT = null, ytApi = false, ytObj = null, tab = 'list', unread = 0, viewers = [], host = null, isHost = false,
     joinedAt = 0, screenOn = false, stream = null, pcs = {}, vpc = null, lastVol = 100,
     replyTo = null, inkData = {}, cur = null, drawing = false;
+
 const now = () => Date.now() + offset;
 const fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
 const toast = t => { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 2400); };
@@ -239,31 +237,40 @@ const hue = s => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
 const base = () => location.href.split(/[?#]/)[0];
 const link = () => base() + '?room=' + room;
 const AVS = [['var(--ink)', 'var(--bg)'], ['var(--card)', 'var(--ink)'], ['repeating-linear-gradient(45deg,var(--ink) 0 4px,var(--card) 4px 8px)', 'var(--bg)'], ['var(--soft)', 'var(--ink)']];
+
 function av(n) {
   const d = document.createElement('div'); d.className = 'av'; d.title = n; d.textContent = (n[0] || '?').toUpperCase();
   const s = AVS[hue(n) % 4]; d.style.background = s[0]; d.style.color = s[1];
   if (hue(n) % 4 === 2) d.style.textShadow = '-1px -1px 0 var(--ink),1px 1px 0 var(--ink),1px -1px 0 var(--ink),-1px 1px 0 var(--ink)';
   return d;
 }
+
 const copy = (t, m) => (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast(m), () => prompt('Copy this:', t));
+
 function quiet(fn) {
   applying = true; try { fn(); } catch (e) {}
   clearTimeout(applyTimer); applyTimer = setTimeout(() => { applying = false; lastT = player ? player.time() : 0; }, 1000);
 }
 db.ref('.info/serverTimeOffset').on('value', s => offset = s.val() || 0);
 
-// ---------- Theme (light / dark / cinema) ----------
+// ---------- Theme Setup ----------
 const THEMES = [['light', 'Light mode'], ['dark', 'Dark mode'], ['cinema', 'Cinema mode']];
-document.querySelectorAll('.themesel').forEach(s => { THEMES.forEach(([v, l]) => s.add(new Option(l, v))); s.onchange = () => setTheme(s.value); });
+document.querySelectorAll('.themesel').forEach(s => { 
+  s.innerHTML = '';
+  THEMES.forEach(([v, l]) => s.appendChild(new Option(l, v))); 
+  s.onchange = () => setTheme(s.value); 
+});
+
 function setTheme(t) {
   if (!THEMES.some(x => x[0] === t)) t = 'light';
-  document.documentElement.dataset.theme = t; try { localStorage.setItem('sr_theme', t); } catch (e) {}
+  document.documentElement.dataset.theme = t; 
+  try { localStorage.setItem('sr_theme', t); } catch (e) {}
   document.querySelectorAll('.themesel').forEach(s => s.value = t);
 }
 let savedTheme = null; try { savedTheme = localStorage.getItem('sr_theme'); } catch (e) {}
 setTheme(savedTheme || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light'));
 
-// ---------- Volume (screen share, mp4 and YouTube) ----------
+// ---------- Volume Control ----------
 function applyVol() {
   const v = +$('vol').value, sv = $('sv');
   $('volIcon').textContent = v === 0 ? '🔇' : v < 50 ? '🔉' : '🔊';
@@ -282,10 +289,11 @@ $('unmute').onclick = () => { if (+$('vol').value === 0) $('vol').value = lastVo
 $('sv').onclick = () => $('vol').oninput();
 try { const v0 = localStorage.getItem('sr_vol'); if (v0 !== null) { $('vol').value = v0; applyVol(); } } catch (e) {}
 
-// ---------- Entry ----------
+// ---------- Entry Logic ----------
 const rp = new URLSearchParams(location.search).get('room');
 if (rp) { $('rid').value = rp.toUpperCase().slice(0, 6); $('hint').textContent = 'You were invited to room ' + $('rid').value + '. Enter your name and press Join.'; $('hint').classList.remove('hide'); }
 try { $('name').value = localStorage.getItem('sr_name') || ''; } catch (e) {}
+
 async function enter(id, creating) {
   name = $('name').value.trim(); $('err').textContent = '';
   if (!name) { $('err').textContent = 'Please enter your name.'; return; }
@@ -295,7 +303,7 @@ async function enter(id, creating) {
     try {
       const s = await Promise.race([db.ref('rooms/' + id + '/host').once('value'), new Promise((_, r) => setTimeout(r, 8000))]);
       if (!s.val()) { $('err').textContent = 'Room not found. Check the ID or ask the host for the link.'; return; }
-    } catch (e) { $('err').textContent = 'Cannot reach the database. Check your Firebase config and rules.'; return; }
+    } catch (e) { $('err').textContent = 'Cannot reach database. Check Firebase configuration.'; return; }
   }
   try { localStorage.setItem('sr_name', name); } catch (e) {}
   room = id; history.replaceState(null, '', '?room=' + room);
@@ -327,7 +335,7 @@ $('fs').onclick = $('fsin').onclick = toggleFs;
 ['fullscreenchange', 'webkitfullscreenchange'].forEach(e => document.addEventListener(e, fsLabel));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('pfs')) pfs(false); });
 
-// ---------- Role toggle ----------
+// ---------- Role Toggle ----------
 async function claimHost() {
   if (isHost) {
     if (stream) stopShare();
@@ -359,7 +367,7 @@ $('invite').onclick = () => {
   const l = link(); $('invlink').value = l; $('invcode').textContent = room;
   const q = $('qr'); q.innerHTML = '';
   if (window.QRCode) new QRCode(q, {text: l, width: 200, height: 200, colorDark: '#141414', colorLight: '#f2f2f2', correctLevel: QRCode.CorrectLevel.M});
-  else q.textContent = 'QR unavailable. Use the link below.';
+  else q.textContent = 'QR unavailable. Use link below.';
   $('nshare').classList.toggle('hide', !navigator.share); $('inv').classList.remove('hide');
 };
 $('invx').onclick = () => $('inv').classList.add('hide');
@@ -378,24 +386,26 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   if (tab === 'list') { unread = 0; $('unread').classList.add('hide'); $('list').scrollTop = $('list').scrollHeight; }
 });
 
-// ---------- Room start ----------
+// ---------- Room Engine ----------
 function setRole() {
   document.body.classList.toggle('viewer', !isHost);
   $('role').textContent = isHost ? 'HOST' : 'VIEWER';
   $('role').className = 'role ' + (isHost ? 'h' : 'v');
-  $('role').title = isHost ? 'Click to switch to viewer' : 'Click to enter the password and become host';
+  $('role').title = isHost ? 'Click to switch to viewer' : 'Click to enter host password';
 }
+
 function start(creating) {
   joinedAt = now();
   if (creating) ref('host').set({id: me, name});
+  
   db.ref('.info/connected').on('value', s => {
     const on = s.val() === true;
     $('live').classList.toggle('off', !on); $('st').textContent = on ? 'Synced' : 'Reconnecting…';
     if (!on) return;
     const p = ref('presence/' + me);
     p.onDisconnect().remove().then(() => p.set({name, joined: TS}));
-    ref('messages').push().onDisconnect().set({sender: 'System', system: true, text: name + ' left', timestamp: TS});
   });
+  
   sys(name + (creating ? ' created the room' : ' joined'));
 
   ref('host').on('value', s => {
@@ -403,11 +413,13 @@ function start(creating) {
     if (was && !isHost) stopShare(true);
     setRole(); renderViewers();
   });
+  
   ref('presence').on('value', s => {
     const v = s.val() || {};
     viewers = Object.entries(v).map(([id, x]) => ({id, name: x.name || '?', joined: x.joined || 0})).sort((a, b) => a.joined - b.joined);
     renderViewers(); if (isHost && stream) syncPcs();
   });
+  
   ref('messages').limitToLast(80).on('child_added', s => {
     const m = s.val(); if (!m || !m.text) return;
     const d = document.createElement('div'); d.dataset.k = s.key;
@@ -433,14 +445,17 @@ function start(creating) {
     l.scrollTop = l.scrollHeight;
     if (tab !== 'list' && !m.system) { $('unread').textContent = ++unread; $('unread').classList.remove('hide'); }
   });
+
   ref('messages').limitToLast(80).on('child_changed', s => {
     const d = $('list').querySelector('[data-k="' + s.key + '"]'); if (d) renderRx(d, (s.val() || {}).rx);
   });
+  
   ref('reactions').limitToLast(1).on('child_added', s => {
     const r = s.val(); if (!r || !r.t || r.t < now() - 5000 || r.t < joinedAt - 1000) return;
     const e = document.createElement('span'); e.textContent = r.e; e.style.left = (8 + Math.random() * 80) + '%';
     $('fx').appendChild(e); setTimeout(() => e.remove(), 3100);
   });
+  
   ref('videoSource').on('value', s => { const v = s.val(); if (v && v.url !== curUrl) loadSource(v); });
   ref('videoState').on('value', s => { latest = s.val(); apply(latest); });
   ref('screen').on('value', s => onScreen(s.val()));
@@ -454,6 +469,7 @@ function start(creating) {
       ref('videoState').set({currentTime: player.time(), isPlaying: true, timestamp: TS, by: me, hb: true});
   }, 4000);
 }
+
 function renderViewers() {
   const n = viewers.length;
   $('cnt').textContent = n + ' watching'; $('vc').textContent = n;
@@ -472,10 +488,11 @@ function renderViewers() {
   $('claim').classList.toggle('hide', !(host && !isHost && !hostHere && meHere));
 }
 
-// ---------- Chat: replies + message reactions ----------
+// ---------- Chat Actions ----------
 function setReply(m) { replyTo = {s: m.sender, t: String(m.text).slice(0, 80)}; $('rtxt').textContent = 'Replying to ' + replyTo.s + ': ' + replyTo.t; $('rbar').classList.remove('hide'); $('msg').focus(); }
 function clearReply() { replyTo = null; $('rbar').classList.add('hide'); }
 $('rcl').onclick = clearReply;
+
 function renderRx(d, rx) {
   const box = d.querySelector('.rxs'); if (!box) return; box.innerHTML = '';
   const c = {}; Object.entries(rx || {}).forEach(([u, e]) => (c[e] = c[e] || []).push(u));
@@ -485,6 +502,7 @@ function renderRx(d, rx) {
   });
 }
 function toggleRx(k, e) { const r = ref('messages/' + k + '/rx/' + me); r.once('value').then(s => s.val() === e ? r.remove() : r.set(e)); }
+
 $('form').onsubmit = e => {
   e.preventDefault();
   const t = $('msg').value.trim(); if (!t || !room) return;
@@ -492,12 +510,13 @@ $('form').onsubmit = e => {
   clearReply(); $('msg').value = '';
 };
 
-// ---------- Custom floating reaction emojis (add / remove, saved on this device) ----------
+// ---------- Emoji Picker ----------
 const DEF = ['❤️', '😂', '😮', '👏', '🔥'];
 let EM = null, emEdit = false;
 try { EM = JSON.parse(localStorage.sr_em); } catch (e) {}
 if (!Array.isArray(EM)) EM = DEF.slice();
 const saveEm = () => { try { localStorage.sr_em = JSON.stringify(EM); } catch (e) {} };
+
 function renderEm() {
   const b = $('react'); b.innerHTML = ''; b.classList.toggle('edit', emEdit);
   EM.forEach((x, i) => {
@@ -510,19 +529,20 @@ function renderEm() {
     };
     b.appendChild(e);
   });
-  const a = document.createElement('button'); a.type = 'button'; a.textContent = '+'; a.title = 'Add an emoji';
+  const a = document.createElement('button'); a.type = 'button'; a.textContent = '+'; a.title = 'Add emoji';
   a.onclick = () => { emEdit = false; renderEm(); $('emPanel').classList.toggle('hide'); };
   const d = document.createElement('button'); d.type = 'button'; d.textContent = emEdit ? '✓' : '−'; d.title = emEdit ? 'Done' : 'Remove emojis';
   d.onclick = () => { emEdit = !emEdit; $('emPanel').classList.add('hide'); renderEm(); };
   b.append(a, d);
 }
+
 function addEm(t) {
   t = (t || '').trim();
   const g = window.Intl && Intl.Segmenter ? [...new Intl.Segmenter(undefined, {granularity: 'grapheme'}).segment(t)].map(x => x.segment) : [...t];
   const x = g[0];
   if (!x || !/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(x)) return toast('Type or paste an emoji');
   if (EM.includes(x)) return toast('Already added');
-  if (EM.length >= 14) return toast('Max 14 emojis. Remove one first');
+  if (EM.length >= 14) return toast('Max 14 emojis');
   EM.push(x); saveEm(); renderEm(); $('emIn').value = '';
 }
 ['🥹', '😍', '🤣', '😭', '😱', '🤯', '💀', '🫡', '👀', '🎉', '💯', '🙌', '🤮', '😴', '👎', '😡', '🍿', '🎬'].forEach(x => {
@@ -532,10 +552,11 @@ $('emOk').onclick = () => addEm($('emIn').value);
 $('emIn').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addEm($('emIn').value); } };
 renderEm();
 
-// ---------- Annotations (draw on the screen, any color, everyone sees it) ----------
+// ---------- Drawing Canvas ----------
 const cv = $('ink'), cx = cv.getContext('2d');
 function fitInk() { const r = $('stage').getBoundingClientRect(), d = window.devicePixelRatio || 1; cv.width = Math.max(1, r.width * d); cv.height = Math.max(1, r.height * d); redraw(); }
 if (window.ResizeObserver) new ResizeObserver(fitInk).observe($('stage')); else addEventListener('resize', fitInk);
+
 function stroke(s) {
   const p = s.p; if (!p || p.length < 2) return;
   cx.strokeStyle = cx.fillStyle = s.c; cx.lineWidth = Math.max(1.5, s.w * cv.width / 1000); cx.lineCap = cx.lineJoin = 'round';
@@ -546,6 +567,7 @@ function stroke(s) {
 }
 function redraw() { cx.clearRect(0, 0, cv.width, cv.height); Object.values(inkData).forEach(u => Object.values(u || {}).forEach(stroke)); if (cur) stroke(cur); }
 const pt = e => { const r = cv.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+
 cv.onpointerdown = e => { if (!cv.classList.contains('on') || !room) return; cv.setPointerCapture(e.pointerId); drawing = true; cur = {c: $('inkc').value, w: +$('inkw').value, p: pt(e)}; redraw(); };
 cv.onpointermove = e => {
   if (!drawing) return; const q = pt(e), p = cur.p, n = p.length;
@@ -556,12 +578,12 @@ cv.onpointerup = cv.onpointercancel = () => {
   if (!drawing) return; drawing = false; const st = cur; cur = null;
   st.p = st.p.map(v => Math.round(v * 5000) / 5000); ref('ink/' + me).push(st);
 };
-$('inkOn').onclick = () => { const on = cv.classList.toggle('on'); $('inkTools').classList.toggle('hide', !on); $('inkOn').textContent = on ? '✏️ Done' : '✏️ Draw'; };
+$('inkOn').onclick = () => { const on = cv.classList.toggle('on'); $('inkTools').classList.toggle('hide', !on); $('inkOn').textContent = on ? '✏️️ Done' : '✏️ Draw'; };
 $('inkUndo').onclick = () => { const k = Object.keys(inkData[me] || {}).sort().pop(); if (k) ref('ink/' + me + '/' + k).remove(); };
 $('inkMine').onclick = () => ref('ink/' + me).remove();
 $('inkAll').onclick = () => { if (isHost && confirm("Clear everyone's drawings?")) ref('ink').remove(); };
 
-// ---------- Video source ----------
+// ---------- Video Source Controls ----------
 function parse(u) {
   const m = u.match(/(?:youtu\.be\/|v=|embed\/|shorts\/|live\/)([\w-]{11})/);
   return m ? {type: 'yt', id: m[1], url: u} : {type: 'mp4', url: u};
@@ -577,19 +599,22 @@ $('load').onclick = () => {
 };
 $('url').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('load').click(); } };
 $('sync').onclick = () => {
-  if (screenOn && !isHost) { ref('want/' + me).set(TS); return toast('Reconnecting to the screen…'); }
-  if (latest && player) { apply(latest, true); toast('Resynced with the room'); } else toast('Nothing to sync yet');
+  if (screenOn && !isHost) { ref('want/' + me).set(TS); return toast('Reconnecting to screen…'); }
+  if (latest && player) { apply(latest, true); toast('Resynced with room'); } else toast('Nothing to sync yet');
 };
+
 function loadYTApi() {
   if (window.YT && YT.Player) { ytApi = true; return; }
   window.onYouTubeIframeAPIReady = () => { ytApi = true; if (pendingYT) { const s = pendingYT; pendingYT = null; loadSource(s); } };
   const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
 }
+
 function push(playing, msg) {
   if (applying || !player || !isHost) return;
   ref('videoState').set({currentTime: player.time(), isPlaying: playing, timestamp: TS, by: me});
   if (msg) sys(name + ' ' + msg);
 }
+
 function loadSource(src) {
   curUrl = src.url; player = null; ytObj = null;
   const box = $('player'); box.innerHTML = '';
@@ -600,7 +625,7 @@ function loadSource(src) {
     v.onplay = () => push(true, 'played the video');
     v.onpause = () => push(false, 'paused the video');
     v.onseeked = () => push(!v.paused, 'jumped to ' + fmt(v.currentTime));
-    v.onloadedmetadata = () => { player = {play: () => v.play().catch(() => toast('Click the video to start playback')), pause: () => v.pause(), seek: t => v.currentTime = t, time: () => v.currentTime, playing: () => !v.paused, yt: false}; applyVol(); apply(latest, true); };
+    v.onloadedmetadata = () => { player = {play: () => v.play().catch(() => toast('Click video to start')), pause: () => v.pause(), seek: t => v.currentTime = t, time: () => v.currentTime, playing: () => !v.paused, yt: false}; applyVol(); apply(latest, true); };
     v.onerror = () => toast('Could not load this video URL');
   } else {
     if (!ytApi) { pendingYT = src; box.innerHTML = '<div class="ph">Loading YouTube player…</div>'; return; }
@@ -619,6 +644,7 @@ function loadSource(src) {
     });
   }
 }
+
 function pollYT() {
   if (!player || !player.yt || !isHost) return;
   const t = player.time();
@@ -627,6 +653,7 @@ function pollYT() {
   if (Math.abs(t - lastT - expected) > 1.2) push(player.playing(), 'jumped to ' + fmt(t));
   lastT = t;
 }
+
 function apply(s, force) {
   if (!player || !s || screenOn || (s.by === me && !force)) return;
   const t = s.currentTime + (s.isPlaying ? Math.max(0, (now() - s.timestamp) / 1000) : 0);
@@ -635,13 +662,15 @@ function apply(s, force) {
   quiet(() => { if (seek) player.seek(t); s.isPlaying ? player.play() : player.pause(); });
 }
 
-// ---------- Screen share quality ----------
+// ---------- WebRTC Quality & Sharing ----------
 const RES = {0: [3840, 2160], 720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160]};
 const BR = {0: 30e6, 720: 8e6, 1080: 16e6, 1440: 28e6, 2160: 45e6};
 const FPSX = {30: 1, 60: 1.5, 90: 1.8, 120: 2};
 ['res', 'fps', 'hint2'].forEach(k => { try { const v = localStorage.getItem('sr_' + k); if (v && $(k).querySelector('[value="' + v + '"]')) $(k).value = v; } catch (e) {} });
+
 const Q = () => ({h: +$('res').value, fps: +$('fps').value, hint: $('hint2').value});
 const label = () => { const q = Q(); return (q.h === 0 ? 'Native' : q.h === 2160 ? '4K' : q.h + 'p') + ' @ ' + q.fps + ' FPS'; };
+
 function smsg(title, sub, live, warn) {
   const m = $('smsg'); m.innerHTML = '';
   const w = document.createElement('div'); w.className = 'sm';
@@ -650,6 +679,7 @@ function smsg(title, sub, live, warn) {
   if (sub) { const s = document.createElement('small'); if (warn) s.className = 'warn'; s.textContent = sub; w.appendChild(s); }
   m.appendChild(w);
 }
+
 function tune(pc) {
   const q = Q();
   pc.getSenders().forEach(s => {
@@ -665,6 +695,7 @@ function tune(pc) {
     } catch (e) {}
   });
 }
+
 function liveApply() {
   try { ['res', 'fps', 'hint2'].forEach(k => localStorage.setItem('sr_' + k, $(k).value)); } catch (e) {}
   if (!stream) return;
@@ -677,14 +708,12 @@ function liveApply() {
 }
 ['res', 'fps', 'hint2'].forEach(k => $(k).onchange = liveApply);
 
-// ---------- Screen share (WebRTC) ----------
 function onScreen(v) {
   screenOn = !!v; const mine = !!v && v.by === me;
   $('scr').classList.toggle('hide', !v); $('player').classList.toggle('hide', !!v);
   $('sv').classList.toggle('hide', mine);
   const m = $('smsg');
   if (v) {
-    // never cover a video that is already playing with the "Connecting…" panel
     m.classList.toggle('hide', !mine && !!$('sv').srcObject);
     if (mine) smsg('You are sharing your screen', label() + ' · viewers can see it live', true);
     else if (!$('sv').srcObject) smsg('Connecting to ' + (v.name || 'the host') + '\'s screen…', 'Hang tight, this only takes a moment');
@@ -695,18 +724,20 @@ function onScreen(v) {
     if (latest) apply(latest, true);
   }
 }
+
 $('shareScr').onclick = () => stream ? stopShare() : startShare();
+
 async function startShare() {
   if (!isHost) return;
   const q = Q();
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: {width: {ideal: RES[q.h][0]}, height: {ideal: RES[q.h][1]}, frameRate: {ideal: q.fps}},
-      audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false}
+      audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false}
     });
   } catch (e) { stream = null; return toast('Screen share cancelled'); }
   const vt = stream.getVideoTracks()[0]; vt.contentHint = q.hint; vt.onended = () => stopShare();
-  if (!stream.getAudioTracks().length) toast('No audio shared. Windows: pick Entire screen + "Share system audio". Mac: pick a Chrome TAB + "Also share tab audio"');
+  if (!stream.getAudioTracks().length) toast('No audio shared. Windows: pick Entire screen + "Share system audio". Mac: pick a Chrome TAB');
   await ref('rtc').remove();
   ref('screen').onDisconnect().remove(); ref('rtc').onDisconnect().remove();
   await ref('screen').set({by: me, name, t: TS});
@@ -714,9 +745,10 @@ async function startShare() {
   sys(name + ' started sharing their screen (' + label() + ')');
   $('shareScr').textContent = 'Stop sharing'; $('shareScr').classList.add('red');
   const st = vt.getSettings();
-  if (st.height && st.height < RES[q.h][1] * 0.9) toast('Browser gave ' + st.width + 'x' + st.height + ' (your screen is smaller)');
+  if (st.height && st.height < RES[q.h][1] * 0.9) toast('Browser gave ' + st.width + 'x' + st.height + ' resolution');
   syncPcs(); statsLoop();
 }
+
 function stopShare(silent) {
   const was = !!stream; clearInterval(stT);
   if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
@@ -724,17 +756,21 @@ function stopShare(silent) {
   $('shareScr').textContent = 'Share screen'; $('shareScr').classList.remove('red');
   if (was && !silent) { ref('screen').remove(); ref('rtc').remove(); ref('want').remove(); sys(name + ' stopped sharing'); }
 }
+
 function syncPcs() {
   const ids = viewers.filter(v => v.id !== me).map(v => v.id);
   ids.forEach(id => { if (!pcs[id]) connectViewer(id); });
   Object.keys(pcs).forEach(id => { if (!ids.includes(id)) dropPc(id, true); });
 }
+
 function wantConn(id) { if (isHost && stream && id !== me && viewers.some(v => v.id === id)) connectViewer(id); }
+
 function dropPc(id, rm) {
   const x = pcs[id];
   if (x) { x.offs.forEach(r => r.off()); try { x.pc.close(); } catch (e) {} delete pcs[id]; }
   if (rm) ref('rtc/' + id).remove();
 }
+
 function boost(sdp) {
   try {
     const q = Q(), mx = Math.round(Math.min(50e6, BR[q.h] * FPSX[q.fps]) / 1000), ex = 'x-google-min-bitrate=' + Math.round(mx / 4) + ';x-google-start-bitrate=' + Math.round(mx / 2) + ';x-google-max-bitrate=' + mx;
@@ -745,20 +781,18 @@ function boost(sdp) {
     }).join('');
   } catch (e) { return sdp; }
 }
-// Host-side diagnostics: tells a bad capture (no frames) apart from a network problem.
-let stT = 0, lastB = 0, lastTs = 0, noFrames = 0;
+
+let stT = 0, lastB = 0, lastTs = 0;
 function statsLoop() {
-  clearInterval(stT); lastTs = 0; noFrames = 0;
+  clearInterval(stT); lastTs = 0;
   stT = setInterval(async () => {
     if (!stream || $('sv').srcObject) return;
     const vt = stream.getVideoTracks()[0];
-    // 1) the browser is not producing frames at all (window minimized/covered/other desktop)
     if (vt && (vt.muted || vt.readyState !== 'live')) {
-      smsg('No picture is being captured', 'Chrome gets no frames from what you picked. Stop sharing and choose a Chrome TAB or ENTIRE SCREEN (not a window), and make sure it is not minimized or hidden.', true, true);
+      smsg('No picture is being captured', 'Make sure Chrome screen share window is not minimized.', true, true);
       return;
     }
     const x = Object.values(pcs)[0];
-    // 2) capture is fine but nobody has joined yet
     if (!x) { smsg('You are sharing your screen', label() + ' · waiting for viewers to join', true); return; }
     try {
       let shown = false;
@@ -768,25 +802,20 @@ function statsLoop() {
         const dt = (r.timestamp - lastTs) / 1000, mb = lastTs ? ((r.bytesSent - lastB) * 8 / dt / 1e6).toFixed(1) : '…';
         lastB = r.bytesSent; lastTs = r.timestamp;
         const enc = r.framesEncoded || 0, cs = x.pc.connectionState;
-        // 3) frames exist but the viewer link is not up: network / TURN problem
-        if (!enc && (cs !== 'connected')) { smsg('Viewer not connected yet', 'Capture is OK, but the link to the viewer is "' + cs + '". Likely a network/firewall issue: add a TURN server (see TURN config in the code) or try the same Wi-Fi.', true, true); return; }
-        if (!enc) { smsg('You are sharing your screen', 'Connected, waiting for the first frame…', true); return; }
-        const lim = r.qualityLimitationReason && r.qualityLimitationReason !== 'none' ? ' · limited by ' + r.qualityLimitationReason : '';
-        smsg('You are sharing your screen', (r.frameWidth || '?') + '×' + (r.frameHeight || '?') + ' @ ' + Math.round(r.framesPerSecond || 0) + ' FPS · ' + mb + ' Mbps' + lim, true);
+        if (!enc && (cs !== 'connected')) { smsg('Viewer not connected', 'Link state: "' + cs + '". Verify firewall configuration.', true, true); return; }
+        if (!enc) { smsg('You are sharing your screen', 'Connected, waiting for frames…', true); return; }
+        smsg('You are sharing your screen', (r.frameWidth || '?') + '×' + (r.frameHeight || '?') + ' @ ' + Math.round(r.framesPerSecond || 0) + ' FPS · ' + mb + ' Mbps', true);
       });
       if (!shown) smsg('You are sharing your screen', 'Connecting to viewer (' + x.pc.connectionState + ')…', true);
     } catch (e) {}
   }, 2000);
 }
+
 async function connectViewer(id) {
   if (!stream) return;
   dropPc(id);
   const pc = new RTCPeerConnection(ICE), offs = []; pcs[id] = {pc, offs};
   stream.getTracks().forEach(t => pc.addTrack(t, stream));
-  try {
-    const rank = c => ({'video/VP9': 0, 'video/H264': 1, 'video/VP8': 2, 'video/AV1': 3}[c.mimeType] ?? 4);
-    pc.getTransceivers().forEach(t => { if (t.sender.track && t.sender.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences([...RTCRtpSender.getCapabilities('video').codecs].sort((a, b) => rank(a) - rank(b))); });
-  } catch (e) {}
   let ready = false, q = [];
   const sendC = c => ref('rtc/' + id + '/h').push(c);
   pc.onicecandidate = e => { if (!e.candidate) return; const c = e.candidate.toJSON(); ready ? sendC(c) : q.push(c); };
@@ -808,6 +837,7 @@ async function connectViewer(id) {
     });
   } catch (e) {}
 }
+
 function viewerRtc() {
   ref('rtc/' + me + '/offer').on('value', async s => {
     const o = s.val(); if (!o || isHost) return;
