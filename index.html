@@ -144,9 +144,14 @@ const firebaseConfig = {
   messagingSenderId: "158059059936",
   appId: "1:158059059936:web:a5ba7be1293899bb618e85"
 };
-// ==================================
-firebase.initializeApp(firebaseConfig);
+
+// Initialize Firebase
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 const db = firebase.database(), TS = firebase.database.ServerValue.TIMESTAMP;
+// ==================================
+
 const $ = id => document.getElementById(id);
 const ICE = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}]};
 const me = sessionStorage.sr_uid || (sessionStorage.sr_uid = Math.random().toString(36).slice(2, 10));
