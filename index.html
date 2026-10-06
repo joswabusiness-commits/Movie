@@ -220,11 +220,17 @@ if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database(), TS = firebase.database.ServerValue.TIMESTAMP;
 
 const $ = id => document.getElementById(id);
-const ICE = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}]};
+// STUN + TURN relay: the relay lets phones and strict home/mobile networks connect (no relay = black "Connecting…" screen for them)
+const ICE = {iceServers: [
+  {urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'},
+  {urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject'},
+  {urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject'},
+  {urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject'}
+]};
 const me = sessionStorage.sr_uid || (sessionStorage.sr_uid = Math.random().toString(36).slice(2, 10));
 let room, name, offset = 0, player = null, curUrl = null, latest = null, applying = false, applyTimer = 0, lastT = 0,
     pendingYT = null, ytApi = false, ytObj = null, tab = 'list', unread = 0, viewers = [], host = null, isHost = false,
-    joinedAt = 0, screenOn = false, stream = null, pcs = {}, vpc = null, lastVol = 100, hlsObj = null;
+    joinedAt = 0, screenOn = false, stream = null, pcs = {}, vpc = null, lastVol = 100, hlsObj = null, vWatch = 0, vRetry = 0;
 const now = () => Date.now() + offset;
 const fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
 const toast = t => { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 2400); };
@@ -583,13 +589,18 @@ function apply(s, force) {
   quiet(() => { if (seek) player.seek(t); s.isPlaying ? player.play() : player.pause(); });
 }
 
-// ---------- Screen share: maximum quality settings ----------
-const RES = {0: [3840, 2160], 720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160]};
-const BR = {0: 40e6, 720: 10e6, 1080: 20e6, 1440: 32e6, 2160: 50e6};
+// ---------- Screen share quality settings ----------
+// Native is capped at 1440p (a Retina "native" 4K stream stalls most connections and phones).
+const RES = {0: [2560, 1440], 720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160]};
+const BR = {0: 12e6, 720: 3e6, 1080: 6e6, 1440: 10e6, 2160: 16e6};
 const FPSX = {30: 1, 60: 1.25};
 ['res', 'fps', 'hint2'].forEach(k => { try { const v = localStorage.getItem('sr_' + k); if (v && $(k).querySelector('[value="' + v + '"]')) $(k).value = v; } catch (e) {} });
 const Q = () => ({h: +$('res').value, fps: +$('fps').value, hint: $('hint2').value});
-const maxBr = q => Math.min(50e6, BR[q.h] * FPSX[q.fps]);
+// Upload is shared between viewers, so the per-viewer cap shrinks as more people join.
+const maxBr = q => {
+  const n = Math.max(1, viewers.length - 1);
+  return Math.max(2.5e6, Math.min(50e6, BR[q.h] * FPSX[q.fps]) / Math.min(n, 3));
+};
 const label = () => { const q = Q(); return (q.h === 0 ? 'Native' : q.h === 2160 ? '4K' : q.h + 'p') + ' @ ' + q.fps + ' FPS'; };
 function smsg(title, sub, live) {
   const m = $('smsg'); m.innerHTML = '';
@@ -607,7 +618,7 @@ function tune(pc) {
       const p = s.getParameters();
       if (!p.encodings || !p.encodings.length) p.encodings = [{}];
       const e = p.encodings[0];
-      e.maxBitrate = maxBr(q); e.maxFramerate = q.fps; e.priority = 'high'; e.networkPriority = 'high'; e.scaleResolutionDownBy = 1;
+      e.maxBitrate = maxBr(q); e.maxFramerate = q.fps; e.priority = 'high'; e.networkPriority = 'high';
       p.degradationPreference = q.hint === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
       s.setParameters(p).catch(() => {});
     } catch (e) {}
@@ -632,11 +643,13 @@ function onScreen(v) {
   $('sv').classList.toggle('hide', mine);
   const m = $('smsg');
   if (v) {
-    m.classList.remove('hide');
+    // never cover a video that is already playing with the "Connecting…" panel
+    m.classList.toggle('hide', !mine && !!$('sv').srcObject);
     if (mine) smsg('You are sharing your screen', label(), true);
-    else smsg('Connecting to ' + (v.name || 'the host') + '\'s screen…', 'Hang tight, this only takes a moment');
+    else if (!$('sv').srcObject) smsg('Connecting to ' + (v.name || 'the host') + '\'s screen…', 'Hang tight, this only takes a moment');
     if (!mine) quiet(() => player && player.pause());
   } else {
+    clearTimeout(vWatch); vRetry = 0;
     $('sv').srcObject = null; $('unmute').classList.add('hide');
     if (vpc) { vpc.close(); vpc = null; }
     if (latest) apply(latest, true);
@@ -649,11 +662,17 @@ async function startShare() {
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: {width: {ideal: RES[q.h][0]}, height: {ideal: RES[q.h][1]}, frameRate: {ideal: q.fps}},
-      audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false}
+      audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false},
+      systemAudio: 'include',
+      selfBrowserSurface: 'exclude',
+      surfaceSwitching: 'include'
     });
-  } catch (e) { stream = null; return toast('Screen share cancelled'); }
+  } catch (e) {
+    try { stream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: true}); }
+    catch (e2) { stream = null; return toast('Screen share cancelled'); }
+  }
   const vt = stream.getVideoTracks()[0]; vt.contentHint = q.hint; vt.onended = () => stopShare();
-  if (!stream.getAudioTracks().length) toast('No audio shared. Pick a Chrome TAB and tick "Also share tab audio"');
+  if (!stream.getAudioTracks().length) toast('No audio shared. Windows: pick Entire screen + "Share system audio". Mac: pick a Chrome TAB + "Also share tab audio"');
   await ref('rtc').remove();
   ref('screen').onDisconnect().remove(); ref('rtc').onDisconnect().remove();
   await ref('screen').set({by: me, name, t: TS});
@@ -680,11 +699,12 @@ function dropPc(id, rm) {
   if (x) { x.offs.forEach(r => r.off()); try { x.pc.close(); } catch (e) {} delete pcs[id]; }
   if (rm) ref('rtc/' + id).remove();
 }
+// Bitrate hints: start low and ramp up; NO minimum bitrate (a forced minimum is what stalls weaker viewers into black).
 function boost(sdp) {
   try {
-    const mx = Math.round(maxBr(Q()) / 1000), ex = 'x-google-min-bitrate=' + Math.round(mx / 3) + ';x-google-start-bitrate=' + Math.round(mx / 2) + ';x-google-max-bitrate=' + mx;
+    const mx = Math.round(maxBr(Q()) / 1000), ex = 'x-google-start-bitrate=' + Math.round(mx / 3) + ';x-google-max-bitrate=' + mx;
     return sdp.split(/(?=^m=)/m).map(x => {
-      if (/^m=audio/.test(x)) return x.replace(/(a=fmtp:\d+ [^\r\n]*minptime=10[^\r\n]*)/g, '$1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000');
+      if (/^m=audio/.test(x)) return x.replace(/(a=fmtp:\d+ [^\r\n]*minptime=10[^\r\n]*)/g, '$1;stereo=1;sprop-stereo=1;maxaveragebitrate=192000');
       if (/^m=video/.test(x)) return x.replace(/(a=fmtp:\d+ [^\r\n]*)/g, (m, a) => /apt=/.test(a) ? m : a + ';' + ex);
       return x;
     }).join('');
@@ -712,7 +732,8 @@ async function connectViewer(id) {
   const pc = new RTCPeerConnection(ICE), offs = []; pcs[id] = {pc, offs};
   stream.getTracks().forEach(t => pc.addTrack(t, stream));
   try {
-    const rank = c => ({'video/H264': 0, 'video/VP9': 1, 'video/VP8': 2, 'video/AV1': 3}[c.mimeType] ?? 4);
+    // VP8 first: every phone, Windows PC and Mac can decode it. H264/VP9 hardware paths are a common cause of black video.
+    const rank = c => ({'video/VP8': 0, 'video/H264': 1, 'video/VP9': 2, 'video/AV1': 4}[c.mimeType] ?? 3);
     pc.getTransceivers().forEach(t => { if (t.sender.track && t.sender.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences([...RTCRtpSender.getCapabilities('video').codecs].sort((a, b) => rank(a) - rank(b))); });
   } catch (e) {}
   let ready = false, q = [];
@@ -743,10 +764,21 @@ function viewerRtc() {
     ref('rtc/' + me + '/h').off();
     const pc = vpc = new RTCPeerConnection(ICE);
     pc.ontrack = e => {
-      const v = $('sv'); v.srcObject = e.streams[0]; applyVol();
+      const v = $('sv'), st = e.streams[0]; if (!st) return;
+      if (v.srcObject !== st) v.srcObject = st;
+      applyVol();
       try { pc.getReceivers().forEach(r => { if ('playoutDelayHint' in r) r.playoutDelayHint = 0.5; }); } catch (x) {}
-      v.play().then(() => $('unmute').classList.add('hide')).catch(() => { v.muted = true; v.play().catch(() => {}); $('unmute').classList.remove('hide'); });
+      v.play().then(() => { if (!v.muted) $('unmute').classList.add('hide'); }).catch(() => { v.muted = true; v.play().catch(() => {}); $('unmute').classList.remove('hide'); });
       $('smsg').classList.add('hide');
+      // watchdog: if the connection is up but no video frames are decoded, ask the host to reconnect
+      clearTimeout(vWatch);
+      vWatch = setTimeout(async () => {
+        if (vpc !== pc || !$('sv').srcObject) return;
+        let frames = 0;
+        try { (await pc.getStats()).forEach(r => { if (r.type === 'inbound-rtp' && r.kind === 'video') frames = r.framesDecoded || 0; }); } catch (x) {}
+        if (frames) vRetry = 0;
+        else if (vRetry++ < 3) { toast('Screen not arriving, retrying…'); ref('want/' + me).set(TS); }
+      }, 7000);
     };
     pc.onicecandidate = e => { if (e.candidate) ref('rtc/' + me + '/v').push(e.candidate.toJSON()); };
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' && vpc === pc) ref('want/' + me).set(TS); };
