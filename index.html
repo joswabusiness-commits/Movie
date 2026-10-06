@@ -23,7 +23,7 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px #6366f144}
 .badge:hover{background:var(--accent);color:#fff}
 .role{font-size:12px;font-weight:800;letter-spacing:1px;padding:5px 11px;border-radius:999px;cursor:pointer;user-select:none;transition:transform .15s,filter .15s}
 .role:hover{transform:scale(1.05);filter:brightness(1.1)}
-.role.h{background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b66;cursor:default}.role.v{background:#38bdf822;color:#7dd3fc;border:1px solid #38bdf866}
+.role.h{background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b66;cursor:pointer}.role.v{background:#38bdf822;color:#7dd3fc;border:1px solid #38bdf866}
 .sp{flex:1}
 .live{display:flex;align-items:center;gap:10px;background:#0f172acc;padding:5px 14px 5px 6px;border-radius:999px;border:1px solid #ffffff14}
 .stack{display:flex}.stack .av{margin-left:-9px;border:2px solid var(--bg)}.stack .av:first-child{margin-left:0}
@@ -83,9 +83,10 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <body class="viewer">
 <div id="modal" class="ov"><div class="card">
 <h1>🎬 SyncRoom</h1><p>Your private cinema. Watch in sync, share your screen, and chat live.</p>
-<div class="chips"><span>⚡ Real-time sync</span><span>🖥️ 4K 60FPS screen share</span><span>📱 QR invite</span><span>👥 Live viewers</span></div>
+<div class="chips"><span>⚡ Real-time sync</span><span>🖥️️ 4K 60FPS screen share</span><span>📱 QR invite</span><span>👥 Live viewers</span></div>
 <div id="hint" class="hide"></div>
 <input id="name" placeholder="Your display name" maxlength="20">
+<input id="hpass" type="password" placeholder="Host Password (optional / required for Host)" maxlength="30">
 <button class="btn" id="create">👑 Create Room (be the Host)</button>
 <div class="or">or join as viewer</div>
 <div class="row"><input id="rid" placeholder="ROOM ID" maxlength="6"><button class="btn alt" id="join">Join</button></div>
@@ -196,22 +197,52 @@ async function enter(id, creating) {
   }
   localStorage.setItem('sr_name', name);
   room = id; history.replaceState(null, '', '?room=' + room);
+  
+  const pass = $('hpass').value.trim();
+  if (creating) {
+    await ref('pass').set(pass);
+  }
+  
   $('modal').classList.add('hide'); $('code').textContent = room;
   start(creating);
 }
 $('create').onclick = () => enter(genId(), true);
 $('join').onclick = () => enter($('rid').value, false);
-$('rid').onkeydown = $('name').onkeydown = e => { if (e.key === 'Enter') ($('rid').value ? $('join') : $('create')).click(); };
+$('rid').onkeydown = $('name').onkeydown = $('hpass').onkeydown = e => { if (e.key === 'Enter') ($('rid').value ? $('join') : $('create')).click(); };
 $('code').onclick = () => copy(room, 'Room code copied!');
 $('fs').onclick = () => { const s = $('stage'); document.fullscreenElement ? document.exitFullscreen() : (s.requestFullscreen || s.webkitRequestFullscreen).call(s); };
 
-// ---------- Role Click Handler (Become Host) ----------
+// ---------- Role Toggle (Host <-> Viewer) ----------
 async function claimHost() {
-  if (isHost) return;
-  if (!confirm('Do you want to become the Host of this room?')) return;
+  if (isHost) {
+    // Automatic switch back to Viewer
+    if (stream) stopShare();
+    await ref('host').remove();
+    sys(name + ' stepped down to Viewer');
+    toast('Switched to Viewer mode');
+    return;
+  }
+  
+  // Viewer -> Host (Password Protected)
+  const passSnap = await ref('pass').once('value');
+  const storedPass = passSnap.val() || '';
+  
+  if (storedPass !== '') {
+    let inputPass = $('hpass').value.trim();
+    if (!inputPass) {
+      inputPass = prompt('Enter Host Password for this room:');
+      if (inputPass === null) return; // User cancelled
+    }
+    if (inputPass !== storedPass) {
+      toast('❌ Incorrect Host Password!');
+      return;
+    }
+  }
+
   await ref('screen').remove(); await ref('rtc').remove();
   await ref('host').set({id: me, name});
   sys(name + ' is now the host');
+  toast('👑 You are now the Host!');
 }
 $('role').onclick = claimHost;
 $('claim').onclick = claimHost;
@@ -245,7 +276,7 @@ function setRole() {
   document.body.classList.toggle('viewer', !isHost);
   $('role').textContent = isHost ? '👑 HOST' : '👁 VIEWER';
   $('role').className = 'role ' + (isHost ? 'h' : 'v');
-  $('role').title = isHost ? 'You are the Host' : 'Click to become Host';
+  $('role').title = isHost ? 'Click to automatically switch to Viewer' : 'Click to enter password and become Host';
 }
 function start(creating) {
   joinedAt = now();
