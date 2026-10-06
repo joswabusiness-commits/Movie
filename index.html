@@ -4,73 +4,127 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyncRoom - Watch Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--panel2:#2b3a52;--accent:#6366f1;--text:#e2e8f0;--muted:#94a3b8;--ok:#22c55e;--bad:#ef4444;--r:12px}
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#2b3a52;--accent:#6366f1;--accent2:#a855f7;--text:#e2e8f0;--muted:#94a3b8;--ok:#22c55e;--bad:#ef4444;--r:16px}
 *{box-sizing:border-box;margin:0}
-body{background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;height:100vh;height:100dvh;overflow:hidden}
+body{background:radial-gradient(60vmax 60vmax at 0% 0%,#6366f126,transparent 60%),radial-gradient(55vmax 55vmax at 100% 100%,#a855f720,transparent 60%),var(--bg);color:var(--text);font:15px/1.45 Inter,system-ui,sans-serif;height:100vh;height:100dvh;overflow:hidden}
 .hide{display:none!important}
-input{background:var(--bg);border:1px solid var(--panel2);color:var(--text);padding:10px 12px;border-radius:8px;font:inherit;outline:none;min-width:0}
+input{background:#0f172acc;border:1px solid var(--panel2);color:var(--text);padding:11px 14px;border-radius:10px;font:inherit;outline:none;min-width:0;transition:border-color .2s}
 input:focus{border-color:var(--accent);box-shadow:0 0 0 3px #6366f144}
-.btn{background:var(--accent);color:#fff;border:0;padding:10px 16px;border-radius:8px;font:inherit;font-weight:600;cursor:pointer;transition:.15s}
-.btn:hover{filter:brightness(1.15);transform:translateY(-1px)}
-.btn.alt{background:var(--panel2)}.btn.sm{padding:7px 12px;font-size:13px}
-#app{display:grid;grid-template-columns:1fr 360px;height:100%}
-main{display:flex;flex-direction:column;padding:16px;gap:14px;min-width:0}
-#stage{flex:1;background:#000;border-radius:var(--r);overflow:hidden;position:relative;box-shadow:0 10px 40px #0008;min-height:0}
-#player,#player iframe,#player video{width:100%;height:100%;border:0;display:block;background:#000}
-.ph{height:100%;display:grid;place-items:center;color:var(--muted);text-align:center;padding:20px}
-.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--panel);padding:10px 14px;border-radius:999px;box-shadow:0 8px 30px #0006;border:1px solid var(--panel2)}
-.badge{background:var(--bg);border:1px dashed var(--accent);color:#c7d2fe;padding:6px 12px;border-radius:999px;font:700 14px ui-monospace,monospace;letter-spacing:2px;cursor:pointer}
-.status{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
-.status i{width:9px;height:9px;border-radius:50%;background:var(--bad)}
-.status.on i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
-.src{display:flex;gap:8px;flex:1;min-width:200px}.src input{flex:1;padding:7px 12px;border-radius:999px}
-aside{background:var(--panel);display:flex;flex-direction:column;border-left:1px solid var(--panel2);min-height:0}
-aside header{padding:16px;border-bottom:1px solid var(--panel2);display:flex;justify-content:space-between;align-items:center}
-aside header span{color:var(--muted);font-size:13px}
-#list{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
-.msg{background:var(--panel2);padding:8px 12px;border-radius:12px 12px 12px 4px;max-width:90%;align-self:flex-start;word-break:break-word;animation:in .2s}
-.msg.me{background:var(--accent);align-self:flex-end;border-radius:12px 12px 4px 12px}
-.msg .meta{font-size:11px;opacity:.75;margin-bottom:2px}.msg .meta b{margin-right:6px}
+.btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:0;padding:10px 18px;border-radius:10px;font:600 14px Inter,sans-serif;cursor:pointer;transition:transform .15s,filter .15s;white-space:nowrap}
+.btn:hover{transform:translateY(-2px);filter:brightness(1.12)}.btn:active{transform:none}
+.btn.alt{background:var(--panel2)}.btn.sm{padding:8px 13px;font-size:13px}.btn.red{background:var(--bad)}
+#app{display:grid;grid-template-columns:1fr 360px;grid-template-rows:auto 1fr;height:100%}
+.top{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:11px 20px;background:#111a2eee;border-bottom:1px solid #ffffff12;flex-wrap:wrap}
+.logo{font-weight:800;font-size:19px;letter-spacing:-.5px;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent}
+.badge{background:#0f172acc;border:1px dashed var(--accent);color:#c7d2fe;padding:6px 13px;border-radius:999px;font:700 13px ui-monospace,monospace;letter-spacing:3px;cursor:pointer}
+.badge:hover{background:var(--accent);color:#fff}
+.role{font-size:12px;font-weight:800;letter-spacing:1px;padding:5px 11px;border-radius:999px}
+.role.h{background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b66}.role.v{background:#38bdf822;color:#7dd3fc;border:1px solid #38bdf866}
+.sp{flex:1}
+.live{display:flex;align-items:center;gap:10px;background:#0f172acc;padding:5px 14px 5px 6px;border-radius:999px;border:1px solid #ffffff14}
+.stack{display:flex}.stack .av{margin-left:-9px;border:2px solid var(--bg)}.stack .av:first-child{margin-left:0}
+.av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 13px Inter;color:#fff;flex:none;text-shadow:0 1px 2px #0006}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 #22c55e99;animation:pulse 1.8s infinite}
+.off .dot{background:var(--bad);animation:none}
+@keyframes pulse{70%{box-shadow:0 0 0 9px #22c55e00}100%{box-shadow:0 0 0 0 #22c55e00}}
+.live b{font-size:13px}.live small{color:var(--muted);font-size:12px}
+main{display:flex;flex-direction:column;padding:16px;gap:12px;min-width:0;min-height:0}
+#stage{flex:1;background:#000;border-radius:var(--r);overflow:hidden;position:relative;box-shadow:0 14px 40px #000a,0 0 0 1px #ffffff14;min-height:0}
+#player,#player iframe,#player video,#scr,#sv{width:100%;height:100%;border:0;display:block;background:#000}
+#scr{position:absolute;inset:0}#sv{object-fit:contain}
+#smsg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:#c7d2fe;font-weight:600;font-size:18px;background:#0b1120}
+.ph{height:100%;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted);background:radial-gradient(circle at 50% 40%,#6366f122,transparent 60%)}
+.ph div{font-size:54px;margin-bottom:8px}
+#fx{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+#fx span{position:absolute;bottom:-10px;font-size:34px;animation:rise 3s ease-out forwards}
+@keyframes rise{to{transform:translateY(-70vh) rotate(18deg) scale(1.3);opacity:0}}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:#1e293bd9;padding:10px 14px;border-radius:var(--r);border:1px solid #ffffff14}
+.src{display:flex;gap:8px;flex:1;min-width:220px}.src input{flex:1;border-radius:999px;padding:9px 16px}
+.note{color:var(--muted);font-size:13px;flex:1}
+.react{display:flex;gap:4px}.react button{background:var(--panel2);border:0;border-radius:50%;width:36px;height:36px;font-size:18px;cursor:pointer;transition:transform .15s}
+.react button:hover{transform:scale(1.25) translateY(-3px);background:var(--accent)}
+body.viewer .hostonly,body:not(.viewer) .vonly{display:none!important}
+aside{background:#1e293bf2;display:flex;flex-direction:column;border-left:1px solid #ffffff12;min-height:0}
+.tabs{display:flex;padding:10px;gap:6px;border-bottom:1px solid #ffffff12}
+.tabs button{flex:1;background:none;border:0;color:var(--muted);padding:9px;border-radius:10px;font:600 14px Inter;cursor:pointer}
+.tabs button.on{background:var(--panel2);color:#fff}
+.tabs i{font-style:normal;background:var(--accent);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;margin-left:5px}
+#list,#viewers{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.msg{background:var(--panel2);padding:8px 12px;border-radius:14px 14px 14px 4px;max-width:88%;align-self:flex-start;word-break:break-word}
+.msg.me{background:linear-gradient(135deg,var(--accent),var(--accent2));align-self:flex-end;border-radius:14px 14px 4px 14px}
+.msg .meta{font-size:11px;opacity:.8;margin-bottom:2px}.msg .meta b{margin-right:6px}
 .msg.sys{background:none;align-self:center;color:var(--muted);font-size:12px;font-style:italic;padding:2px}
-@keyframes in{from{opacity:0;transform:translateY(6px)}}
-#form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--panel2)}#form input{flex:1}
-#modal{position:fixed;inset:0;background:#0f172af2;backdrop-filter:blur(6px);display:grid;place-items:center;z-index:9;padding:16px}
-.card{background:var(--panel);padding:30px;border-radius:16px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:12px;border:1px solid var(--panel2);box-shadow:0 20px 60px #000a}
-.card h1{font-size:26px}.card p{color:var(--muted);font-size:14px}
-.or{text-align:center;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px}
-.row{display:flex;gap:8px}.row input{flex:1;text-transform:uppercase}
-#err{color:var(--bad);min-height:18px}
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--accent);padding:8px 16px;border-radius:999px;opacity:0;transition:.3s;pointer-events:none;z-index:10}
-#toast.show{opacity:1}
-@media(max-width:820px){
-#app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
-main{padding:10px}#stage{flex:none;aspect-ratio:16/9}
-.bar{border-radius:var(--r)}aside{border-left:0;border-top:1px solid var(--panel2)}}
+.vrow{display:flex;align-items:center;gap:12px;background:var(--panel2);padding:10px 12px;border-radius:12px}
+.vrow span{flex:1;font-weight:600;word-break:break-word}.vrow small{color:var(--ok);font-size:12px}.vrow small.h{color:#fbbf24}
+#form{display:flex;gap:8px;padding:12px;border-top:1px solid #ffffff12}#form input{flex:1;border-radius:999px;padding:11px 16px}
+.ov{position:fixed;inset:0;background:#0b1120ee;display:grid;place-items:center;z-index:9;padding:16px;overflow:auto}
+.card{background:#1e293b;padding:32px;border-radius:24px;width:100%;max-width:440px;display:flex;flex-direction:column;gap:13px;border:1px solid #ffffff1c;box-shadow:0 30px 90px #000c}
+.card h1{font-size:34px;font-weight:800;letter-spacing:-1px;background:linear-gradient(90deg,#fff,#a5b4fc,#d8b4fe);-webkit-background-clip:text;background-clip:text;color:transparent}
+.card h2{font-size:22px}.card p{color:var(--muted);font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips span{background:#6366f122;color:#c7d2fe;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid #6366f144}
+.or{text-align:center;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:2px}
+.row{display:flex;gap:8px}.row input{flex:1}#rid{text-transform:uppercase;letter-spacing:3px;font-weight:700}
+#err{color:var(--bad);min-height:18px;font-size:13px}#hint{color:#a5b4fc;font-size:13px}
+#qr{background:#fff;padding:14px;border-radius:14px;align-self:center;min-width:100px;min-height:100px;color:#0f172a;font-size:13px;text-align:center}
+.code{font:800 30px ui-monospace,monospace;letter-spacing:8px;text-align:center;color:#c7d2fe}
+#toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,20px);background:linear-gradient(135deg,var(--accent),var(--accent2));padding:10px 20px;border-radius:999px;opacity:0;transition:.3s;pointer-events:none;z-index:20;font-weight:600}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:var(--panel2);border-radius:9px}
+@media(max-width:860px){
+body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:auto;min-height:100dvh}
+.top{padding:10px 12px;gap:8px}.sp{display:none}main{padding:10px;flex:none}
+#stage{flex:none;aspect-ratio:16/9}aside{height:70dvh;border-left:0;border-top:1px solid #ffffff12}}
 </style>
 </head>
-<body>
-<div id="modal"><div class="card">
-<h1>🎬 SyncRoom</h1><p>Watch videos in perfect sync with friends, with live chat.</p>
+<body class="viewer">
+<div id="modal" class="ov"><div class="card">
+<h1>🎬 SyncRoom</h1><p>Your private cinema. Watch in sync, share your screen, and chat live.</p>
+<div class="chips"><span>⚡ Real-time sync</span><span>🖥️ Screen share</span><span>📱 QR invite</span><span>👥 Live viewers</span></div>
+<div id="hint" class="hide"></div>
 <input id="name" placeholder="Your display name" maxlength="20">
-<button class="btn" id="create">Create New Room</button>
-<div class="or">or join existing</div>
+<button class="btn" id="create">👑 Create Room (be the Host)</button>
+<div class="or">or join as viewer</div>
 <div class="row"><input id="rid" placeholder="ROOM ID" maxlength="6"><button class="btn alt" id="join">Join</button></div>
 <div id="err"></div></div></div>
 
+<div id="inv" class="ov hide"><div class="card">
+<h2>📱 Invite people</h2><p>Scan the QR code with a phone, or send the link.</p>
+<div id="qr"></div><div class="code" id="invcode"></div>
+<input id="invlink" readonly>
+<div class="row"><button class="btn" id="cplink">Copy Link</button><button class="btn alt" id="cpcode">Copy Code</button><button class="btn alt hide" id="nshare">Share…</button></div>
+<button class="btn alt" id="invx">Close</button></div></div>
+
 <div id="app">
-<main>
-<div id="stage"><div id="player"><div class="ph">Paste a YouTube or MP4 link below and press Load to start watching together.</div></div></div>
-<div class="bar">
+<div class="top">
+<span class="logo">🎬 SyncRoom</span>
 <span class="badge" id="code" title="Click to copy room code"></span>
-<button class="btn sm" id="share">🔗 Share Link</button>
-<span class="status" id="status"><i></i><b>Connecting…</b></span>
-<div class="src"><input id="url" placeholder="YouTube or direct .mp4 URL"><button class="btn sm" id="load">Load</button></div>
+<span class="role v" id="role">👁 VIEWER</span>
+<span class="sp"></span>
+<div class="live" id="live"><div class="stack" id="stack"></div><span class="dot"></span><div><b id="cnt">0 watching</b><br><small id="st">Connecting…</small></div></div>
+<button class="btn sm hide" id="claim">👑 Become Host</button>
+<button class="btn sm" id="invite">📱 Invite / QR</button>
+<button class="btn sm alt" id="fs">⛶ Fullscreen</button>
+</div>
+<main>
+<div id="stage">
+<div id="player"><div class="ph"><span><div>🍿</div>Waiting for the host to start something…<br>The video or shared screen will appear here.</span></div></div>
+<div id="scr" class="hide"><video id="sv" autoplay playsinline></video><div id="smsg"></div></div>
+<div id="fx"></div></div>
+<div class="bar">
+<div class="src hostonly"><input id="url" placeholder="Paste YouTube or direct .mp4 URL…"><button class="btn sm" id="load">▶ Load</button></div>
+<button class="btn sm alt hostonly" id="shareScr">🖥️ Share Screen</button>
+<span class="note vonly">👁 The host controls the video and screen.</span>
+<button class="btn sm alt" id="sync" title="Jump to the room's current position">🔄 Resync</button>
+<div class="react" id="react"><button>❤️</button><button>😂</button><button>😮</button><button>👏</button><button>🔥</button></div>
 </div>
 </main>
 <aside>
-<header><b>💬 Live Chat</b><span id="who"></span></header>
+<div class="tabs"><button class="on" data-t="list">💬 Chat<i id="unread" class="hide">0</i></button><button data-t="viewers">👥 Viewers<i id="vc">0</i></button></div>
 <div id="list"></div>
+<div id="viewers" class="hide"></div>
 <form id="form"><input id="msg" placeholder="Send a message…" autocomplete="off" maxlength="300"><button class="btn">Send</button></form>
 </aside>
 </div>
@@ -78,8 +132,9 @@ main{padding:10px}#stage{flex:none;aspect-ratio:16/9}
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-// ====== 1. PASTE YOUR FIREBASE CONFIG HERE ======
+// ====== PASTE YOUR FIREBASE CONFIG HERE ======
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -87,61 +142,117 @@ const firebaseConfig = {
   projectId: "YOUR_PROJECT_ID",
   appId: "YOUR_APP_ID"
 };
-// ================================================
+// =============================================
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database(), TS = firebase.database.ServerValue.TIMESTAMP;
 const $ = id => document.getElementById(id);
-const me = Math.random().toString(36).slice(2, 10);
-let room, name, offset = 0, player = null, curUrl = null, latest = null, applying = false, lastT = 0, pendingYT = null, ytApi = false;
+const ICE = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}]};
+const me = sessionStorage.sr_uid || (sessionStorage.sr_uid = Math.random().toString(36).slice(2, 10));
+let room, name, offset = 0, player = null, curUrl = null, latest = null, applying = false, applyTimer = 0, lastT = 0,
+    pendingYT = null, ytApi = false, tab = 'list', unread = 0, viewers = [], host = null, isHost = false,
+    joinedAt = 0, screenOn = false, stream = null, pcs = {}, vpc = null;
 const now = () => Date.now() + offset;
 const fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
-const toast = t => { const e = $('toast'); e.textContent = t; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 1800); };
+const toast = t => { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 2200); };
 const genId = () => Array.from({length: 6}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
 const ref = p => db.ref('rooms/' + room + '/' + p);
 const sys = t => ref('messages').push({sender: 'System', system: true, text: t, timestamp: TS});
-
+const hue = s => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
+const base = () => location.href.split(/[?#]/)[0];
+const link = () => base() + '?room=' + room;
+function av(n) {
+  const d = document.createElement('div'); d.className = 'av'; d.title = n; d.textContent = (n[0] || '?').toUpperCase();
+  d.style.background = 'linear-gradient(135deg,hsl(' + hue(n) + ' 80% 60%),hsl(' + (hue(n) + 50) % 360 + ' 80% 45%))'; return d;
+}
+const copy = (t, m) => (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast(m), () => prompt('Copy this:', t));
+function quiet(fn) { // run a local player action without echoing it to the room
+  applying = true; try { fn(); } catch (e) {}
+  clearTimeout(applyTimer); applyTimer = setTimeout(() => { applying = false; lastT = player ? player.time() : 0; }, 1000);
+}
 db.ref('.info/serverTimeOffset').on('value', s => offset = s.val() || 0);
-db.ref('.info/connected').on('value', s => {
-  const on = s.val() === true;
-  $('status').classList.toggle('on', on);
-  $('status').querySelector('b').textContent = on ? 'Synced' : 'Reconnecting…';
-});
 
-// ---------- Entry modal ----------
-const params = new URLSearchParams(location.search);
-if (params.get('room')) $('rid').value = params.get('room').toUpperCase();
+// ---------- Entry ----------
+const rp = new URLSearchParams(location.search).get('room');
+if (rp) { $('rid').value = rp.toUpperCase().slice(0, 6); $('hint').textContent = '🎟️ You were invited to room ' + $('rid').value + '. Enter your name and press Join.'; $('hint').classList.remove('hide'); }
 $('name').value = localStorage.getItem('sr_name') || '';
-function enter(id) {
-  name = $('name').value.trim();
+async function enter(id, creating) {
+  name = $('name').value.trim(); $('err').textContent = '';
   if (!name) { $('err').textContent = 'Please enter your name.'; return; }
   id = id.trim().toUpperCase();
   if (!/^[A-Z0-9]{4,12}$/.test(id)) { $('err').textContent = 'Enter a valid Room ID.'; return; }
+  if (!creating) { // joining requires an existing room
+    try {
+      const s = await Promise.race([db.ref('rooms/' + id + '/host').once('value'), new Promise((_, r) => setTimeout(r, 8000))]);
+      if (!s.val()) { $('err').textContent = 'Room not found. Check the ID or ask the host for the link.'; return; }
+    } catch (e) { $('err').textContent = 'Cannot reach the database. Check your Firebase config and rules.'; return; }
+  }
   localStorage.setItem('sr_name', name);
-  room = id;
-  history.replaceState(null, '', '?room=' + room);
-  $('modal').classList.add('hide');
-  $('code').textContent = room;
-  $('who').textContent = 'You: ' + name;
-  start();
+  room = id; history.replaceState(null, '', '?room=' + room);
+  $('modal').classList.add('hide'); $('code').textContent = room;
+  start(creating);
 }
-$('create').onclick = () => enter(genId());
-$('join').onclick = () => enter($('rid').value);
+$('create').onclick = () => enter(genId(), true);
+$('join').onclick = () => enter($('rid').value, false);
 $('rid').onkeydown = $('name').onkeydown = e => { if (e.key === 'Enter') ($('rid').value ? $('join') : $('create')).click(); };
-const link = () => location.origin + location.pathname + '?room=' + room;
-const copy = (t, m) => (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast(m), () => prompt('Copy this:', t));
-$('share').onclick = () => copy(link(), 'Share link copied!');
 $('code').onclick = () => copy(room, 'Room code copied!');
+$('fs').onclick = () => { const s = $('stage'); document.fullscreenElement ? document.exitFullscreen() : (s.requestFullscreen || s.webkitRequestFullscreen).call(s); };
+
+// ---------- Invite / QR ----------
+$('invite').onclick = () => {
+  const l = link(); $('invlink').value = l; $('invcode').textContent = room;
+  const q = $('qr'); q.innerHTML = '';
+  if (window.QRCode) new QRCode(q, {text: l, width: 200, height: 200, colorDark: '#0f172a', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M});
+  else q.textContent = 'QR unavailable. Use the link below.';
+  $('nshare').classList.toggle('hide', !navigator.share); $('inv').classList.remove('hide');
+};
+$('invx').onclick = () => $('inv').classList.add('hide');
+$('inv').onclick = e => { if (e.target === $('inv')) $('inv').classList.add('hide'); };
+$('cplink').onclick = () => copy(link(), '🔗 Invite link copied!');
+$('cpcode').onclick = () => copy(room, 'Room code copied!');
+$('nshare').onclick = () => navigator.share({title: 'Join my SyncRoom', text: 'Watch with me! Room ' + room, url: link()}).catch(() => {});
+if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) $('shareScr').classList.add('hide'), $('shareScr').classList.remove('hostonly');
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  tab = b.dataset.t;
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  $('list').classList.toggle('hide', tab !== 'list'); $('viewers').classList.toggle('hide', tab !== 'viewers');
+  $('form').classList.toggle('hide', tab !== 'list');
+  if (tab === 'list') { unread = 0; $('unread').classList.add('hide'); $('list').scrollTop = $('list').scrollHeight; }
+});
 
 // ---------- Room start ----------
-function start() {
-  sys(name + ' joined');
-  const lr = ref('messages').push();
-  lr.onDisconnect().set({sender: 'System', system: true, text: name + ' left', timestamp: TS});
+function setRole() {
+  document.body.classList.toggle('viewer', !isHost);
+  $('role').textContent = isHost ? '👑 HOST' : '👁 VIEWER'; $('role').className = 'role ' + (isHost ? 'h' : 'v');
+}
+function start(creating) {
+  joinedAt = now();
+  if (creating) ref('host').set({id: me, name});
+  db.ref('.info/connected').on('value', s => {
+    const on = s.val() === true;
+    $('live').classList.toggle('off', !on); $('st').textContent = on ? 'Synced' : 'Reconnecting…';
+    if (!on) return;
+    const p = ref('presence/' + me);
+    p.onDisconnect().remove().then(() => p.set({name, joined: TS}));
+    ref('messages').push().onDisconnect().set({sender: 'System', system: true, text: name + ' left', timestamp: TS});
+  });
+  sys(name + (creating ? ' created the room' : ' joined'));
 
-  ref('messages').limitToLast(100).on('child_added', s => {
+  ref('host').on('value', s => {
+    const was = isHost; host = s.val(); isHost = !!host && host.id === me;
+    if (was && !isHost) stopShare(true);
+    setRole(); renderViewers();
+  });
+  ref('presence').on('value', s => {
+    const v = s.val() || {};
+    viewers = Object.entries(v).map(([id, x]) => ({id, name: x.name || '?', joined: x.joined || 0})).sort((a, b) => a.joined - b.joined);
+    renderViewers(); if (isHost && stream) syncPcs();
+  });
+  ref('messages').limitToLast(80).on('child_added', s => {
     const m = s.val(); if (!m || !m.text) return;
     const d = document.createElement('div');
-    d.className = 'msg' + (m.system ? ' sys' : m.sender === name ? ' me' : '');
+    d.className = 'msg' + (m.system ? ' sys' : m.uid === me ? ' me' : '');
     if (m.system) d.textContent = m.text;
     else {
       const meta = document.createElement('div'); meta.className = 'meta';
@@ -152,36 +263,80 @@ function start() {
       const tx = document.createElement('div'); tx.textContent = m.text;
       d.append(meta, tx);
     }
-    $('list').appendChild(d);
-    $('list').scrollTo({top: $('list').scrollHeight, behavior: 'smooth'});
+    const l = $('list'); l.appendChild(d);
+    while (l.children.length > 150) l.firstChild.remove();
+    l.scrollTop = l.scrollHeight;
+    if (tab !== 'list' && !m.system) { $('unread').textContent = ++unread; $('unread').classList.remove('hide'); }
   });
-
+  ref('reactions').limitToLast(1).on('child_added', s => {
+    const r = s.val(); if (!r || !r.t || r.t < now() - 5000 || r.t < joinedAt - 1000) return;
+    const e = document.createElement('span'); e.textContent = r.e; e.style.left = (8 + Math.random() * 80) + '%';
+    $('fx').appendChild(e); setTimeout(() => e.remove(), 3100);
+  });
   ref('videoSource').on('value', s => { const v = s.val(); if (v && v.url !== curUrl) loadSource(v); });
   ref('videoState').on('value', s => { latest = s.val(); apply(latest); });
+  ref('screen').on('value', s => onScreen(s.val()));
+  viewerRtc();
+  ref('want').on('child_added', s => wantConn(s.key)); ref('want').on('child_changed', s => wantConn(s.key));
   loadYTApi();
   setInterval(pollYT, 500);
+  setInterval(() => { // host heartbeat keeps everyone's time aligned without spamming
+    if (isHost && player && !applying && !screenOn && player.playing())
+      ref('videoState').set({currentTime: player.time(), isPlaying: true, timestamp: TS, by: me, hb: true});
+  }, 4000);
 }
+function renderViewers() {
+  const n = viewers.length;
+  $('cnt').textContent = n + ' watching'; $('vc').textContent = n;
+  const st = $('stack'); st.innerHTML = '';
+  viewers.slice(0, 4).forEach(v => st.appendChild(av(v.name)));
+  if (n > 4) { const m = av('+'); m.textContent = '+' + (n - 4); m.style.background = 'var(--panel2)'; st.appendChild(m); }
+  const box = $('viewers'); box.innerHTML = '';
+  viewers.forEach(v => {
+    const r = document.createElement('div'); r.className = 'vrow';
+    const nm = document.createElement('span'); nm.textContent = v.name + (v.id === me ? ' (you)' : '');
+    const h = host && host.id === v.id; const s = document.createElement('small');
+    s.textContent = h ? '👑 Host' : '● Viewer'; if (h) s.className = 'h';
+    r.append(av(v.name), nm, s); box.appendChild(r);
+  });
+  const hostHere = host && viewers.some(v => v.id === host.id), meHere = viewers.some(v => v.id === me);
+  $('claim').classList.toggle('hide', !(host && !isHost && !hostHere && meHere));
+}
+$('claim').onclick = async () => {
+  if (!confirm('The host seems to be offline. Become the new host?')) return;
+  await ref('screen').remove(); await ref('rtc').remove();
+  await ref('host').set({id: me, name}); sys(name + ' is now the host');
+};
+$('react').onclick = e => {
+  if (e.target.tagName !== 'BUTTON' || !room) return;
+  const r = ref('reactions').push({e: e.target.textContent, by: me, t: TS});
+  setTimeout(() => r.remove(), 5000);
+};
 $('form').onsubmit = e => {
   e.preventDefault();
   const t = $('msg').value.trim(); if (!t || !room) return;
-  ref('messages').push({sender: name, text: t, timestamp: TS});
+  ref('messages').push({sender: name, uid: me, text: t, timestamp: TS});
   $('msg').value = '';
 };
 
-// ---------- Video source ----------
+// ---------- Video source (host controls) ----------
 function parse(u) {
   const m = u.match(/(?:youtu\.be\/|v=|embed\/|shorts\/|live\/)([\w-]{11})/);
   return m ? {type: 'yt', id: m[1], url: u} : {type: 'mp4', url: u};
 }
 $('load').onclick = () => {
   const u = $('url').value.trim();
-  if (!room) return;
+  if (!room || !isHost) return;
   if (!/^https?:\/\//i.test(u)) return toast('Enter a valid http(s) URL');
   const src = parse(u); src.by = me;
   ref('videoSource').set(src);
   ref('videoState').set({currentTime: 0, isPlaying: false, timestamp: TS, by: me});
-  sys(name + ' loaded a new video');
-  $('url').value = '';
+  sys(name + ' loaded a new video'); $('url').value = '';
+};
+$('url').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('load').click(); } };
+$('sync').onclick = () => {
+  if (screenOn && !isHost) { ref('want/' + me).set(TS); return toast('Reconnecting to the screen…'); }
+  if (latest && player) { apply(latest, true); toast('Resynced with the room'); } else toast('Nothing to sync yet');
 };
 function loadYTApi() {
   if (window.YT && YT.Player) { ytApi = true; return; }
@@ -189,7 +344,7 @@ function loadYTApi() {
   const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
 }
 function push(playing, msg) {
-  if (applying || !player) return;
+  if (applying || !player || !isHost) return;
   ref('videoState').set({currentTime: player.time(), isPlaying: playing, timestamp: TS, by: me});
   if (msg) sys(name + ' ' + msg);
 }
@@ -198,12 +353,12 @@ function loadSource(src) {
   const box = $('player'); box.innerHTML = '';
   if (src.type === 'mp4') {
     const v = document.createElement('video');
-    v.controls = true; v.playsInline = true; v.src = src.url;
+    v.controls = true; v.playsInline = true; v.preload = 'auto'; v.src = src.url;
     box.appendChild(v);
     v.onplay = () => push(true, 'played the video');
     v.onpause = () => push(false, 'paused the video');
     v.onseeked = () => push(!v.paused, 'jumped to ' + fmt(v.currentTime));
-    v.onloadedmetadata = () => { player = {play: () => v.play().catch(() => toast('Click the video to start playback')), pause: () => v.pause(), seek: t => v.currentTime = t, time: () => v.currentTime, playing: () => !v.paused, yt: false}; apply(latest); };
+    v.onloadedmetadata = () => { player = {play: () => v.play().catch(() => toast('Click the video to start playback')), pause: () => v.pause(), seek: t => v.currentTime = t, time: () => v.currentTime, playing: () => !v.paused, yt: false}; apply(latest, true); };
     v.onerror = () => toast('Could not load this video URL');
   } else {
     if (!ytApi) { pendingYT = src; box.innerHTML = '<div class="ph">Loading YouTube player…</div>'; return; }
@@ -211,7 +366,7 @@ function loadSource(src) {
     const p = new YT.Player('ytp', {
       videoId: src.id, playerVars: {rel: 0, playsinline: 1, modestbranding: 1},
       events: {
-        onReady: () => { player = {play: () => p.playVideo(), pause: () => p.pauseVideo(), seek: t => p.seekTo(t, true), time: () => p.getCurrentTime() || 0, playing: () => p.getPlayerState() === 1, yt: true}; apply(latest); },
+        onReady: () => { player = {play: () => p.playVideo(), pause: () => p.pauseVideo(), seek: t => p.seekTo(t, true), time: () => p.getCurrentTime() || 0, playing: () => p.getPlayerState() === 1, yt: true}; apply(latest, true); },
         onStateChange: e => {
           if (!player) return;
           if (e.data === 1) push(true, 'played the video');
@@ -222,24 +377,120 @@ function loadSource(src) {
     });
   }
 }
-// YouTube has no seek event, so detect jumps in playback time
-function pollYT() {
-  if (!player || !player.yt) return;
+function pollYT() { // YouTube has no seek event, so the host detects time jumps
+  if (!player || !player.yt || !isHost) return;
   const t = player.time();
   if (applying) { lastT = t; return; }
   const expected = player.playing() ? 0.5 : 0;
   if (Math.abs(t - lastT - expected) > 1.2) push(player.playing(), 'jumped to ' + fmt(t));
   lastT = t;
 }
-// ---------- Apply remote state ----------
-function apply(s) {
-  if (!player || !s || s.by === me) return;
-  applying = true;
+function apply(s, force) {
+  if (!player || !s || screenOn || (s.by === me && !force)) return;
   const t = s.currentTime + (s.isPlaying ? Math.max(0, (now() - s.timestamp) / 1000) : 0);
-  if (Math.abs(player.time() - t) > 0.8) player.seek(t);
-  s.isPlaying ? player.play() : player.pause();
-  setTimeout(() => { applying = false; lastT = player ? player.time() : 0; }, 1000);
+  const seek = Math.abs(player.time() - t) > (s.hb && !force ? 1.5 : 0.8);
+  if (!seek && player.playing() === !!s.isPlaying) return;
+  quiet(() => { if (seek) player.seek(t); s.isPlaying ? player.play() : player.pause(); });
 }
+
+// ---------- Screen share (WebRTC, host -> each viewer, signaling via Firebase) ----------
+function onScreen(v) {
+  screenOn = !!v; const mine = !!v && v.by === me;
+  $('scr').classList.toggle('hide', !v); $('player').classList.toggle('hide', !!v);
+  $('sv').classList.toggle('hide', mine);
+  const m = $('smsg');
+  if (v) {
+    m.classList.remove('hide');
+    m.textContent = mine ? '🖥️ You are sharing your screen. Viewers can see it live.' : '🖥️ Connecting to ' + (v.name || 'the host') + '\'s screen…';
+    if (!mine) quiet(() => player && player.pause());
+  } else {
+    $('sv').srcObject = null; if (vpc) { vpc.close(); vpc = null; }
+    if (latest) apply(latest, true);
+  }
+}
+$('shareScr').onclick = () => stream ? stopShare() : startShare();
+async function startShare() {
+  if (!isHost) return;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({video: {frameRate: {ideal: 30, max: 30}, width: {max: 1920}, height: {max: 1080}}, audio: true});
+  } catch (e) { stream = null; return toast('Screen share cancelled'); }
+  const vt = stream.getVideoTracks()[0]; vt.contentHint = 'motion'; vt.onended = () => stopShare();
+  await ref('rtc').remove();
+  ref('screen').onDisconnect().remove(); ref('rtc').onDisconnect().remove();
+  await ref('screen').set({by: me, name, t: TS});
+  quiet(() => player && player.pause());
+  sys(name + ' started sharing their screen');
+  $('shareScr').textContent = '⏹ Stop Sharing'; $('shareScr').classList.add('red');
+  syncPcs();
+}
+function stopShare(silent) {
+  const was = !!stream;
+  if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
+  Object.keys(pcs).forEach(id => dropPc(id));
+  $('shareScr').textContent = '🖥️ Share Screen'; $('shareScr').classList.remove('red');
+  if (was && !silent) { ref('screen').remove(); ref('rtc').remove(); ref('want').remove(); sys(name + ' stopped sharing'); }
+}
+function syncPcs() {
+  const ids = viewers.filter(v => v.id !== me).map(v => v.id);
+  ids.forEach(id => { if (!pcs[id]) connectViewer(id); });
+  Object.keys(pcs).forEach(id => { if (!ids.includes(id)) dropPc(id, true); });
+}
+function wantConn(id) { if (isHost && stream && id !== me && viewers.some(v => v.id === id)) connectViewer(id); }
+function dropPc(id, rm) {
+  const x = pcs[id];
+  if (x) { x.offs.forEach(r => r.off()); try { x.pc.close(); } catch (e) {} delete pcs[id]; }
+  if (rm) ref('rtc/' + id).remove();
+}
+async function connectViewer(id) {
+  if (!stream) return;
+  dropPc(id);
+  const pc = new RTCPeerConnection(ICE), offs = []; pcs[id] = {pc, offs};
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+  let ready = false, q = [];
+  const sendC = c => ref('rtc/' + id + '/h').push(c);
+  pc.onicecandidate = e => { if (!e.candidate) return; const c = e.candidate.toJSON(); ready ? sendC(c) : q.push(c); };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed') setTimeout(() => { if (stream && pcs[id] && pcs[id].pc === pc) connectViewer(id); }, 1500);
+  };
+  try {
+    const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+    pc.getSenders().forEach(s => { // cap bitrate to keep the stream smooth
+      if (!s.track || s.track.kind !== 'video') return;
+      try { const p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}]; p.encodings[0].maxBitrate = 2500000; p.encodings[0].maxFramerate = 30; s.setParameters(p).catch(() => {}); } catch (e) {}
+    });
+    await ref('rtc/' + id).set({offer: {type: offer.type, sdp: offer.sdp}});
+    ready = true; q.forEach(sendC); q = [];
+    const ar = ref('rtc/' + id + '/answer'); offs.push(ar);
+    ar.on('value', async s => {
+      const a = s.val(); if (!a || pc.signalingState !== 'have-local-offer') return;
+      try { await pc.setRemoteDescription(a); } catch (e) { return; }
+      const vr = ref('rtc/' + id + '/v'); offs.push(vr);
+      vr.on('child_added', c => pc.addIceCandidate(c.val()).catch(() => {}));
+    });
+  } catch (e) {}
+}
+function viewerRtc() {
+  ref('rtc/' + me + '/offer').on('value', async s => {
+    const o = s.val(); if (!o || isHost) return;
+    if (vpc) { try { vpc.close(); } catch (e) {} vpc = null; }
+    ref('rtc/' + me + '/h').off();
+    const pc = vpc = new RTCPeerConnection(ICE);
+    pc.ontrack = e => {
+      const v = $('sv'); v.srcObject = e.streams[0]; v.muted = false;
+      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); toast('Tap the screen to unmute 🔊'); });
+      $('smsg').classList.add('hide');
+    };
+    pc.onicecandidate = e => { if (e.candidate) ref('rtc/' + me + '/v').push(e.candidate.toJSON()); };
+    pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' && vpc === pc) ref('want/' + me).set(TS); };
+    try {
+      await pc.setRemoteDescription(o);
+      const a = await pc.createAnswer(); await pc.setLocalDescription(a);
+      await ref('rtc/' + me + '/answer').set({type: a.type, sdp: a.sdp});
+      ref('rtc/' + me + '/h').on('child_added', c => pc.addIceCandidate(c.val()).catch(() => {}));
+    } catch (e) {}
+  });
+}
+$('sv').onclick = () => { $('sv').muted = false; $('sv').play().catch(() => {}); };
 </script>
 </body>
 </html>
