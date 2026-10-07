@@ -29,7 +29,7 @@ select option{background:var(--card);color:var(--ink)}
 .top{position:relative;grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--card);border-bottom:4px solid var(--ink);flex-wrap:wrap;box-shadow:0 5px 0 var(--soft)}
 [data-theme=cinema] .top{background:linear-gradient(#4a0b13,#2e060b);border-bottom-color:#e0b252;box-shadow:0 6px 0 #7d101d}
 [data-theme=cinema] .top:after{content:"";position:absolute;left:0;right:0;bottom:-15px;height:8px;z-index:3;background:radial-gradient(circle,#ffe39a 0 3px,transparent 4px) 0 0/22px 8px repeat-x;filter:drop-shadow(0 0 4px #ffcf5a)}
-.logo{font:24px Bungee,'Lilita One',cursive;letter-spacing:1px;background:linear-gradient(135deg,var(--lg1),var(--lg2));-webkit-background-clip:text;background-clip:text;color:transparent;display:flex;align-items:center;gap:8px;filter:drop-shadow(2px 2px 0 var(--soft));user-select:none}
+.logo{font:24px Bungee,'Lilita One',cursive;letter-spacing:1px;background:linear-gradient(135deg,var(--lg1),var(--lg2));-webkit-background-clip:text;background-clip:text;color:transparent;display:flex;align-items:center;gap:8px;filter:drop-shadow(2px 2px 0 var(--soft));user-select:none;cursor:pointer}
 .logo em{font-style:normal;-webkit-text-fill-color:initial;filter:none}
 .badge{border:3px dashed var(--ink);padding:2px 12px;border-radius:12px;font:20px 'Lilita One';letter-spacing:4px;cursor:pointer;background:var(--card)}
 .badge:hover{background:var(--inv);color:var(--invt)}
@@ -153,9 +153,14 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <div class="row"><button class="btn" id="cplink">Copy link</button><button class="btn alt" id="cpcode">Copy code</button><button class="btn alt hide" id="nshare">Share…</button></div>
 <button class="btn alt" id="invx">Close</button></div></div>
 
+<div id="lv" class="ov hide"><div class="card">
+<h2>Leave this room?</h2><p>You'll go back to the home screen. If you're sharing your screen, it will stop. You can rejoin with the room code.</p>
+<div class="row"><button class="btn red" id="lvYes">Yes, leave</button><button class="btn alt" id="lvNo">Stay here</button></div>
+</div></div>
+
 <div id="app">
 <div class="top">
-<span class="logo"><em>🎬</em>SyncRoom</span>
+<span class="logo" id="logo" title="Back to home"><em>🎬</em>SyncRoom</span>
 <span class="badge" id="code" title="Click to copy room code"></span>
 <span class="role v" id="role">VIEWER</span>
 <span class="sp"></span>
@@ -163,6 +168,7 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <button class="btn sm hide" id="claim">Become host</button>
 <button class="btn sm" id="invite">Invite / QR</button>
 <select class="themesel" aria-label="Theme"></select>
+<button class="btn sm alt" id="home">🏠 Home</button>
 <button class="btn sm alt" id="fs">Fullscreen</button>
 </div>
 <main>
@@ -181,6 +187,8 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <label>FPS <select id="fps"><option value="30">30</option><option value="60" selected>60</option><option value="90">90</option><option value="120">120</option></select></label>
 <label>Focus <select id="hint2"><option value="motion">Smooth (movies)</option><option value="detail">Sharp (text)</option></select></label>
 <button class="btn sm alt" id="shareScr">Share screen</button>
+<button class="btn sm alt" id="pickFile" title="Play a movie file from your computer (e.g. one you'd open in VLC) for everyone">🎞️ Play local file</button>
+<input type="file" id="lfIn" class="hide" accept="video/*,.mkv,.mp4,.webm,.mov,.m4v">
 </div>
 <label class="vol"><span id="volIcon" title="Mute / unmute">🔊</span><input type="range" id="vol" min="0" max="100" value="100" aria-label="Volume"></label>
 <button class="btn sm alt" id="sync" title="Jump to the room's current position">Resync</button>
@@ -202,7 +210,11 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-// ====== FIREBASE CONFIG ======
+/* =====================================================================
+   SETTINGS YOU MAY NEED TO EDIT  (see the guide)
+   ===================================================================== */
+
+// ---- 1) FIREBASE (chat, rooms, signalling) - already filled in ----
 const firebaseConfig = {
   apiKey: "AIzaSyAd2SWwtEBQj1dS2U5WCbo1RNuyWR_E6FU",
   authDomain: "movie-88d8e.firebaseapp.com",
@@ -212,15 +224,45 @@ const firebaseConfig = {
   messagingSenderId: "158059059936",
   appId: "1:158059059936:web:a5ba7be1293899bb618e85"
 };
+
+// ---- 2) TURN SERVER (makes screen share work across different networks) ----
+// Get these two values from https://www.metered.ca  (free plan)
+//   METERED_APP = the part before ".metered.live"  e.g. if your app URL is  myroom.metered.live  ->  'myroom'
+//   METERED_KEY = the API key shown in the Metered dashboard
+const METERED_APP = 'YOUR_APP_NAME';
+const METERED_KEY = 'YOUR_API_KEY';
+
+/* ===================================================================== */
+
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database(), TS = firebase.database.ServerValue.TIMESTAMP;
 
-// TURN Server configuration fallback
-const TURN = {urls: ['turn:YOUR_TURN_HOST:443', 'turn:YOUR_TURN_HOST:443?transport=tcp'], username: '', credential: ''};
-
 const $ = id => document.getElementById(id);
-const ICE = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}]};
-if (TURN.username && TURN.credential) ICE.iceServers.push(TURN);
+
+// ICE servers: STUN first, then TURN relays are added once loaded.
+const ICE = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}], iceCandidatePoolSize: 2};
+// Public free relay used ONLY if your own Metered keys are missing/invalid. Less reliable, shared by many people.
+const FALLBACK_TURN = [
+  {urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject'},
+  {urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject'},
+  {urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject'}
+];
+let turnMode = 'none';
+// Every peer connection waits for this, so TURN is always loaded before connecting.
+const iceReady = (async () => {
+  const set = METERED_APP && METERED_KEY && !/^YOUR_/.test(METERED_APP) && !/^YOUR_/.test(METERED_KEY);
+  if (set) {
+    try {
+      const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 7000);
+      const r = await fetch('https://' + METERED_APP + '.metered.live/api/v1/turn/credentials?apiKey=' + encodeURIComponent(METERED_KEY), {signal: ctl.signal});
+      clearTimeout(tm);
+      const l = await r.json();
+      if (Array.isArray(l) && l.length) { ICE.iceServers.push(...l); turnMode = 'metered'; return; }
+    } catch (e) {}
+  }
+  ICE.iceServers.push(...FALLBACK_TURN); turnMode = 'fallback';
+})();
+
 const me = sessionStorage.sr_uid || (sessionStorage.sr_uid = Math.random().toString(36).slice(2, 10));
 let room, name, offset = 0, player = null, curUrl = null, latest = null, applying = false, applyTimer = 0, lastT = 0,
     pendingYT = null, ytApi = false, ytObj = null, tab = 'list', unread = 0, viewers = [], host = null, isHost = false,
@@ -255,15 +297,15 @@ db.ref('.info/serverTimeOffset').on('value', s => offset = s.val() || 0);
 
 // ---------- Theme Setup ----------
 const THEMES = [['light', 'Light mode'], ['dark', 'Dark mode'], ['cinema', 'Cinema mode']];
-document.querySelectorAll('.themesel').forEach(s => { 
+document.querySelectorAll('.themesel').forEach(s => {
   s.innerHTML = '';
-  THEMES.forEach(([v, l]) => s.appendChild(new Option(l, v))); 
-  s.onchange = () => setTheme(s.value); 
+  THEMES.forEach(([v, l]) => s.appendChild(new Option(l, v)));
+  s.onchange = () => setTheme(s.value);
 });
 
 function setTheme(t) {
   if (!THEMES.some(x => x[0] === t)) t = 'light';
-  document.documentElement.dataset.theme = t; 
+  document.documentElement.dataset.theme = t;
   try { localStorage.setItem('sr_theme', t); } catch (e) {}
   document.querySelectorAll('.themesel').forEach(s => s.value = t);
 }
@@ -335,6 +377,27 @@ $('fs').onclick = $('fsin').onclick = toggleFs;
 ['fullscreenchange', 'webkitfullscreenchange'].forEach(e => document.addEventListener(e, fsLabel));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('pfs')) pfs(false); });
 
+// ---------- Leave / Home (with "are you sure") ----------
+function openLeave() {
+  if (!room) return;               // already on the home screen
+  $('lv').classList.remove('hide');
+}
+function doLeave() {
+  $('lvYes').disabled = true;
+  try {
+    if (stream) stopShare();
+    ref('presence/' + me).remove();
+    sys(name + ' left');
+  } catch (e) {}
+  setTimeout(() => { location.href = base(); }, 350);
+}
+$('home').onclick = openLeave;
+$('logo').onclick = openLeave;
+$('lvNo').onclick = () => $('lv').classList.add('hide');
+$('lvYes').onclick = doLeave;
+$('lv').onclick = e => { if (e.target === $('lv')) $('lv').classList.add('hide'); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('lv').classList.add('hide'); });
+
 // ---------- Role Toggle ----------
 async function claimHost() {
   if (isHost) {
@@ -397,7 +460,7 @@ function setRole() {
 function start(creating) {
   joinedAt = now();
   if (creating) ref('host').set({id: me, name});
-  
+
   db.ref('.info/connected').on('value', s => {
     const on = s.val() === true;
     $('live').classList.toggle('off', !on); $('st').textContent = on ? 'Synced' : 'Reconnecting…';
@@ -405,7 +468,7 @@ function start(creating) {
     const p = ref('presence/' + me);
     p.onDisconnect().remove().then(() => p.set({name, joined: TS}));
   });
-  
+
   sys(name + (creating ? ' created the room' : ' joined'));
 
   ref('host').on('value', s => {
@@ -413,13 +476,13 @@ function start(creating) {
     if (was && !isHost) stopShare(true);
     setRole(); renderViewers();
   });
-  
+
   ref('presence').on('value', s => {
     const v = s.val() || {};
     viewers = Object.entries(v).map(([id, x]) => ({id, name: x.name || '?', joined: x.joined || 0})).sort((a, b) => a.joined - b.joined);
     renderViewers(); if (isHost && stream) syncPcs();
   });
-  
+
   ref('messages').limitToLast(80).on('child_added', s => {
     const m = s.val(); if (!m || !m.text) return;
     const d = document.createElement('div'); d.dataset.k = s.key;
@@ -449,13 +512,13 @@ function start(creating) {
   ref('messages').limitToLast(80).on('child_changed', s => {
     const d = $('list').querySelector('[data-k="' + s.key + '"]'); if (d) renderRx(d, (s.val() || {}).rx);
   });
-  
+
   ref('reactions').limitToLast(1).on('child_added', s => {
     const r = s.val(); if (!r || !r.t || r.t < now() - 5000 || r.t < joinedAt - 1000) return;
     const e = document.createElement('span'); e.textContent = r.e; e.style.left = (8 + Math.random() * 80) + '%';
     $('fx').appendChild(e); setTimeout(() => e.remove(), 3100);
   });
-  
+
   ref('videoSource').on('value', s => { const v = s.val(); if (v && v.url !== curUrl) loadSource(v); });
   ref('videoState').on('value', s => { latest = s.val(); apply(latest); });
   ref('screen').on('value', s => onScreen(s.val()));
@@ -802,7 +865,10 @@ function statsLoop() {
         const dt = (r.timestamp - lastTs) / 1000, mb = lastTs ? ((r.bytesSent - lastB) * 8 / dt / 1e6).toFixed(1) : '…';
         lastB = r.bytesSent; lastTs = r.timestamp;
         const enc = r.framesEncoded || 0, cs = x.pc.connectionState;
-        if (!enc && (cs !== 'connected')) { smsg('Viewer not connected', 'Link state: "' + cs + '". Verify firewall configuration.', true, true); return; }
+        if (!enc && (cs !== 'connected')) {
+          const tip = turnMode === 'metered' ? 'Retrying automatically…' : 'TURN is not set up with your own key yet (see guide). Retrying…';
+          smsg('Viewer not connected yet', 'Link state: "' + cs + '". ' + tip, true, true); return;
+        }
         if (!enc) { smsg('You are sharing your screen', 'Connected, waiting for frames…', true); return; }
         smsg('You are sharing your screen', (r.frameWidth || '?') + '×' + (r.frameHeight || '?') + ' @ ' + Math.round(r.framesPerSecond || 0) + ' FPS · ' + mb + ' Mbps', true);
       });
@@ -814,6 +880,8 @@ function statsLoop() {
 async function connectViewer(id) {
   if (!stream) return;
   dropPc(id);
+  await iceReady;                       // make sure TURN servers are loaded first
+  if (!stream) return;
   const pc = new RTCPeerConnection(ICE), offs = []; pcs[id] = {pc, offs};
   stream.getTracks().forEach(t => pc.addTrack(t, stream));
   let ready = false, q = [];
@@ -822,6 +890,8 @@ async function connectViewer(id) {
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'failed') setTimeout(() => { if (stream && pcs[id] && pcs[id].pc === pc) connectViewer(id); }, 1500);
   };
+  // auto-retry if still not connected after 12s
+  setTimeout(() => { if (stream && pcs[id] && pcs[id].pc === pc && pc.connectionState !== 'connected') connectViewer(id); }, 12000);
   try {
     const o0 = await pc.createOffer(), offer = {type: o0.type, sdp: boost(o0.sdp)}; await pc.setLocalDescription(offer);
     tune(pc);
@@ -841,6 +911,7 @@ async function connectViewer(id) {
 function viewerRtc() {
   ref('rtc/' + me + '/offer').on('value', async s => {
     const o = s.val(); if (!o || isHost) return;
+    await iceReady;                     // make sure TURN servers are loaded first
     if (vpc) { try { vpc.close(); } catch (e) {} vpc = null; }
     ref('rtc/' + me + '/h').off();
     const pc = vpc = new RTCPeerConnection(ICE);
