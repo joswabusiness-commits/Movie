@@ -51,7 +51,7 @@ main{display:flex;flex-direction:column;padding:16px;gap:14px;min-width:0;min-he
 #player,#player iframe,#player video,#scr,#sv{width:100%;height:100%;border:0;display:block;background:#000}
 #scr{position:absolute;inset:0}#sv{object-fit:contain}
 #smsg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;background:radial-gradient(circle at 50% 40%,#16222f,#000 70%);user-select:none;-webkit-user-select:none}
-.sm{display:flex;flex-direction:column;align-items:center;gap:10px;font-family:Outfit,Nunito,sans-serif}
+#smsg .sm{display:flex;flex-direction:column;align-items:center;gap:10px;font-family:Outfit,Nunito,sans-serif}
 .sm b{font-weight:800;font-size:clamp(18px,3.2vw,34px);color:#e4ebf2;letter-spacing:.3px}
 .sm small{font-weight:600;font-size:clamp(12px,1.6vw,16px);color:#8fa3b8;max-width:640px}
 .sm small.warn{color:#ffb4a8;font-weight:800}
@@ -186,9 +186,10 @@ body{overflow:auto;height:auto}#app{display:flex;flex-direction:column;height:au
 <label>Size <select id="res"><option value="0" selected>Best (native)</option><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label>
 <label>FPS <select id="fps"><option value="30">30</option><option value="60" selected>60</option><option value="90">90</option><option value="120">120</option></select></label>
 <label>Focus <select id="hint2"><option value="motion">Smooth (movies)</option><option value="detail">Sharp (text)</option></select></label>
+<label>Share <select id="shType"><option value="">Ask me</option><option value="browser">Tab (best audio)</option><option value="window">Window</option><option value="monitor">Entire screen</option></select></label>
 <button class="btn sm alt" id="shareScr">Share screen</button>
 <button class="btn sm alt" id="pickFile" title="Play a movie file from your computer (e.g. one you'd open in VLC) for everyone">🎞️ Play local file</button>
-<input type="file" id="lfIn" class="hide" accept="video/*,.mkv,.mp4,.webm,.mov,.m4v">
+<button class="btn sm alt" id="streamFile" title="Send a movie file from your computer straight to everyone">🚀 Stream file</button>
 </div>
 <label class="vol"><span id="volIcon" title="Mute / unmute">🔊</span><input type="range" id="vol" min="0" max="100" value="100" aria-label="Volume"></label>
 <button class="btn sm alt" id="sync" title="Jump to the room's current position">Resync</button>
@@ -267,7 +268,9 @@ const me = sessionStorage.sr_uid || (sessionStorage.sr_uid = Math.random().toStr
 let room, name, offset = 0, player = null, curUrl = null, latest = null, applying = false, applyTimer = 0, lastT = 0,
     pendingYT = null, ytApi = false, ytObj = null, tab = 'list', unread = 0, viewers = [], host = null, isHost = false,
     joinedAt = 0, screenOn = false, stream = null, pcs = {}, vpc = null, lastVol = 100,
-    replyTo = null, inkData = {}, cur = null, drawing = false;
+    replyTo = null, inkData = {}, cur = null, drawing = false,
+    // local file / file streaming state
+    localFile = null, curSrc = null, shareKind = null, fileCtx = null, fileGain = null, fiCb = null;
 
 const now = () => Date.now() + offset;
 const fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
@@ -317,7 +320,8 @@ function applyVol() {
   const v = +$('vol').value, sv = $('sv');
   $('volIcon').textContent = v === 0 ? '🔇' : v < 50 ? '🔉' : '🔊';
   sv.volume = v / 100; sv.muted = v === 0;
-  const pv = document.querySelector('#player video'); if (pv) pv.volume = v / 100;
+  const pv = document.querySelector('#player video');
+  if (fileGain) fileGain.gain.value = v / 100; else if (pv) pv.volume = v / 100;
   if (ytObj && ytObj.setVolume) try { v === 0 ? ytObj.mute() : (ytObj.unMute(), ytObj.setVolume(v)); } catch (e) {}
   try { localStorage.setItem('sr_vol', v); } catch (e) {}
 }
@@ -343,14 +347,18 @@ async function enter(id, creating) {
   if (!/^[A-Z0-9]{4,12}$/.test(id)) { $('err').textContent = 'Enter a valid Room ID.'; return; }
   if (!creating) {
     try {
-      const s = await Promise.race([db.ref('rooms/' + id + '/host').once('value'), new Promise((_, r) => setTimeout(r, 8000))]);
-      if (!s.val()) { $('err').textContent = 'Room not found. Check the ID or ask the host for the link.'; return; }
+      // Use the room's own data (not the host node), so joining still works after the host steps down
+      const [a, b] = await Promise.race([
+        Promise.all([db.ref('rooms/' + id + '/pass').once('value'), db.ref('rooms/' + id + '/created').once('value')]),
+        new Promise((_, r) => setTimeout(r, 8000))
+      ]);
+      if (!a.exists() && !b.exists()) { $('err').textContent = 'Room not found. Check the ID or ask the host for the link.'; return; }
     } catch (e) { $('err').textContent = 'Cannot reach database. Check Firebase configuration.'; return; }
   }
   try { localStorage.setItem('sr_name', name); } catch (e) {}
   room = id; history.replaceState(null, '', '?room=' + room);
   const pass = $('hpass').value.trim();
-  if (creating) await ref('pass').set(pass);
+  if (creating) await Promise.all([ref('pass').set(pass), ref('created').set(TS)]);
   $('modal').classList.add('hide'); $('code').textContent = room;
   start(creating);
 }
@@ -400,6 +408,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('lv').clas
 
 // ---------- Role Toggle ----------
 async function claimHost() {
+  if (isHost && !confirm('Step down as host? Viewers lose control until someone becomes host.')) return;
   if (isHost) {
     if (stream) stopShare();
     await ref('host').remove();
@@ -645,6 +654,79 @@ $('inkOn').onclick = () => { const on = cv.classList.toggle('on'); $('inkTools')
 $('inkUndo').onclick = () => { const k = Object.keys(inkData[me] || {}).sort().pop(); if (k) ref('ink/' + me + '/' + k).remove(); };
 $('inkMine').onclick = () => ref('ink/' + me).remove();
 $('inkAll').onclick = () => { if (isHost && confirm("Clear everyone's drawings?")) ref('ink').remove(); };
+// ---------- Local files: synced playback + file streaming ----------
+const BADFMT = "Your browser can't play this file. MP4 (H.264 + AAC) or WebM works best.";
+const FI = Object.assign(document.createElement('input'), {type: 'file', accept: 'video/*,.mkv,.mp4,.webm,.mov,.m4v'});
+FI.style.display = 'none'; document.body.appendChild(FI);
+FI.onchange = () => { const f = FI.files[0]; FI.value = ''; if (f && fiCb) fiCb(f); };
+const chooseFile = cb => { fiCb = cb; FI.click(); };
+
+// Mode A: everyone opens their own copy, only play/pause/seek is synced (no bandwidth)
+$('pickFile').onclick = () => {
+  if (!room || !isHost) return toast('Only the host can start a movie');
+  if (stream) return toast('Stop sharing first');
+  chooseFile(f => {
+    localFile = f;
+    ref('videoSource').set({type: 'local', url: 'local:' + f.name + ':' + f.size, name: f.name, size: f.size, by: me});
+    ref('videoState').set({currentTime: 0, isPlaying: false, timestamp: TS, by: me});
+    sys(name + ' loaded a local file: ' + f.name);
+  });
+};
+function playLocal(f, key) { localFile = f; loadSource({type: 'mp4', url: URL.createObjectURL(f)}); curUrl = key; }
+function loadLocal(src) {
+  if (localFile && localFile.name === src.name && localFile.size === src.size) return playLocal(localFile, src.url);
+  const box = $('player'); box.innerHTML = '';
+  const ph = document.createElement('div'), w = document.createElement('span'); ph.className = 'ph';
+  const ic = document.createElement('div'); ic.textContent = '🎞️';
+  const t = document.createElement('div'); t.style.cssText = 'font-size:17px;margin:6px 0 12px';
+  t.textContent = (isHost ? 'Select your copy of ' : 'The host is playing a local file. Select your own copy of ') + src.name + ' (' + Math.round(src.size / 1048576) + ' MB)';
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = 'Choose file';
+  b.onclick = () => chooseFile(f => {
+    if (f.size !== src.size && !confirm('This file is a different size from the host\'s, so it may drift out of sync. Use it anyway?')) return;
+    playLocal(f, src.url);
+  });
+  w.append(ic, t, b); ph.append(w); box.append(ph);
+}
+
+// Mode B: stream the file itself to everyone (viewers need nothing)
+$('streamFile').onclick = () => {
+  if (!room || !isHost) return toast('Only the host can stream');
+  if (shareKind === 'file') return stopShare();
+  if (stream) return toast('Stop screen sharing first');
+  chooseFile(startFileStream);
+};
+if (!(HTMLMediaElement.prototype.captureStream || HTMLMediaElement.prototype.mozCaptureStream)) $('streamFile').classList.add('hide');
+
+async function startFileStream(f) {
+  const v = document.createElement('video'); v.controls = true; v.playsInline = true; v.preload = 'auto';
+  try { await new Promise((ok, no) => { v.onloadeddata = ok; v.onerror = no; v.src = URL.createObjectURL(f); }); }
+  catch (e) { return toast(BADFMT); }
+  const cap = v.captureStream || v.mozCaptureStream, vt = cap && cap.call(v).getVideoTracks()[0];
+  if (!vt) return toast('This browser cannot stream files. Use Chrome, Edge or Firefox on a computer.');
+  const ctx = new (window.AudioContext || window.webkitAudioContext)(), dest = ctx.createMediaStreamDestination(),
+        g = ctx.createGain(), as = ctx.createMediaElementSource(v);
+  as.connect(dest); as.connect(g); g.connect(ctx.destination);
+  v.addEventListener('play', () => ctx.resume()); ctx.resume().catch(() => {});
+  fileCtx = ctx; fileGain = g; shareKind = 'file'; player = null; ytObj = null;
+  const box = $('player'); box.innerHTML = ''; box.appendChild(v); applyVol();
+  toast('Press play. Streaming uses your upload speed for every viewer.');
+  stream = new MediaStream([vt, ...dest.stream.getAudioTracks()]);
+  await ref('rtc').remove();
+  ref('screen').onDisconnect().remove(); ref('rtc').onDisconnect().remove();
+  await ref('screen').set({by: me, name, t: TS});
+  sys(name + ' is streaming "' + f.name + '" (' + label() + ')');
+  $('shareScr').textContent = 'Stop sharing'; $('shareScr').classList.add('red'); $('streamFile').textContent = '⏹ Stop stream';
+  syncPcs(); statsLoop();
+}
+function endFile() {
+  shareKind = null; fileGain = null;
+  try { fileCtx && fileCtx.close(); } catch (e) {} fileCtx = null;
+  const v = document.querySelector('#player video'); if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
+  $('player').innerHTML = ''; player = null;
+  if (curSrc) loadSource(curSrc);
+  else $('player').innerHTML = '<div class="ph"><span><div>🍿</div>Lights are on, screen is blank.<br>Waiting for the host to start something…</span></div>';
+  $('streamFile').textContent = '🚀 Stream file'; $('st').textContent = 'Synced'; applyVol();
+}
 
 // ---------- Video Source Controls ----------
 function parse(u) {
@@ -655,6 +737,7 @@ $('load').onclick = () => {
   const u = $('url').value.trim();
   if (!room || !isHost) return;
   if (!/^https?:\/\//i.test(u)) return toast('Enter a valid http(s) URL');
+  if (stream) return toast('Stop sharing first');
   const src = parse(u); src.by = me;
   ref('videoSource').set(src);
   ref('videoState').set({currentTime: 0, isPlaying: false, timestamp: TS, by: me});
@@ -679,8 +762,9 @@ function push(playing, msg) {
 }
 
 function loadSource(src) {
-  curUrl = src.url; player = null; ytObj = null;
+  curUrl = src.url; player = null; ytObj = null; curSrc = src;
   const box = $('player'); box.innerHTML = '';
+  if (src.type === 'local') return loadLocal(src);
   if (src.type === 'mp4') {
     const v = document.createElement('video');
     v.controls = true; v.playsInline = true; v.preload = 'auto'; v.src = src.url;
@@ -689,7 +773,7 @@ function loadSource(src) {
     v.onpause = () => push(false, 'paused the video');
     v.onseeked = () => push(!v.paused, 'jumped to ' + fmt(v.currentTime));
     v.onloadedmetadata = () => { player = {play: () => v.play().catch(() => toast('Click video to start')), pause: () => v.pause(), seek: t => v.currentTime = t, time: () => v.currentTime, playing: () => !v.paused, yt: false}; applyVol(); apply(latest, true); };
-    v.onerror = () => toast('Could not load this video URL');
+    v.onerror = () => toast(src.url.startsWith('blob:') ? BADFMT : 'Could not load this video URL');
   } else {
     if (!ytApi) { pendingYT = src; box.innerHTML = '<div class="ph">Loading YouTube player…</div>'; return; }
     const d = document.createElement('div'); d.id = 'ytp'; box.appendChild(d);
@@ -735,6 +819,7 @@ const Q = () => ({h: +$('res').value, fps: +$('fps').value, hint: $('hint2').val
 const label = () => { const q = Q(); return (q.h === 0 ? 'Native' : q.h === 2160 ? '4K' : q.h + 'p') + ' @ ' + q.fps + ' FPS'; };
 
 function smsg(title, sub, live, warn) {
+  if (shareKind === 'file') $('st').textContent = (sub || title).slice(0, 60);
   const m = $('smsg'); m.innerHTML = '';
   const w = document.createElement('div'); w.className = 'sm';
   if (live) { const r = document.createElement('span'); r.className = 'rec'; r.textContent = 'LIVE'; w.appendChild(r); }
@@ -752,7 +837,7 @@ function tune(pc) {
       if (!p.encodings || !p.encodings.length) p.encodings = [{}];
       p.encodings[0].maxBitrate = Math.min(50e6, BR[q.h] * FPSX[q.fps]);
       p.encodings[0].maxFramerate = q.fps; p.encodings[0].priority = 'high'; p.encodings[0].networkPriority = 'high';
-      p.encodings[0].scaleResolutionDownBy = 1;
+      p.encodings[0].scaleResolutionDownBy = (shareKind === 'file' && q.h && s.track.getSettings().height > q.h) ? s.track.getSettings().height / q.h : 1;
       p.degradationPreference = q.hint === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
       s.setParameters(p).catch(() => {});
     } catch (e) {}
@@ -773,7 +858,8 @@ function liveApply() {
 
 function onScreen(v) {
   screenOn = !!v; const mine = !!v && v.by === me;
-  $('scr').classList.toggle('hide', !v); $('player').classList.toggle('hide', !!v);
+  const fm = mine && shareKind === 'file';
+  $('scr').classList.toggle('hide', !v || fm); $('player').classList.toggle('hide', !!v && !fm);
   $('sv').classList.toggle('hide', mine);
   const m = $('smsg');
   if (v) {
@@ -795,7 +881,8 @@ async function startShare() {
   const q = Q();
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
-      video: {width: {ideal: RES[q.h][0]}, height: {ideal: RES[q.h][1]}, frameRate: {ideal: q.fps}},
+      video: Object.assign({width: {ideal: RES[q.h][0]}, height: {ideal: RES[q.h][1]}, frameRate: {ideal: q.fps}}, $('shType').value ? {displaySurface: $('shType').value} : {}),
+      selfBrowserSurface: 'exclude', systemAudio: 'include', surfaceSwitching: 'include', monitorTypeSurfaces: 'include',
       audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false}
     });
   } catch (e) { stream = null; return toast('Screen share cancelled'); }
@@ -813,7 +900,7 @@ async function startShare() {
 }
 
 function stopShare(silent) {
-  const was = !!stream; clearInterval(stT);
+  const was = !!stream; clearInterval(stT); if (shareKind === 'file') endFile();
   if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
   Object.keys(pcs).forEach(id => dropPc(id));
   $('shareScr').textContent = 'Share screen'; $('shareScr').classList.remove('red');
@@ -851,7 +938,7 @@ function statsLoop() {
   stT = setInterval(async () => {
     if (!stream || $('sv').srcObject) return;
     const vt = stream.getVideoTracks()[0];
-    if (vt && (vt.muted || vt.readyState !== 'live')) {
+    if (vt && shareKind !== 'file' && (vt.muted || vt.readyState !== 'live')) {
       smsg('No picture is being captured', 'Make sure Chrome screen share window is not minimized.', true, true);
       return;
     }
